@@ -1,0 +1,91 @@
+name: Autodarts Liga - Scoring-Rettung (kontrolliert)
+
+on:
+  workflow_dispatch:
+    inputs:
+      aktion:
+        description: 'Nur pruefen oder gezielt 5 Spiele reparieren?'
+        type: choice
+        required: true
+        default: pruefen
+        options:
+          - pruefen
+          - reparieren
+      bestaetigung:
+        description: 'Nur fuer Reparatur: WIEDERHERSTELLEN eingeben (sonst leer lassen)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+# Parallele automatisierte Veröffentlichungen beim Schreiben vermeiden.
+concurrency:
+  group: autodarts-liga-pages
+  cancel-in-progress: false
+
+jobs:
+  kontrollierte-reparatur:
+    name: Originaldaten mit alter Webseite abgleichen
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      LIGA_RCLONE_CONFIG_B64: ${{ secrets.LIGA_RCLONE_CONFIG_B64 }}
+    steps:
+      - name: Ausgewählte Aktion validieren
+        shell: bash
+        env:
+          AKTION: ${{ inputs.aktion }}
+          BESTAETIGUNG: ${{ inputs.bestaetigung }}
+        run: |
+          set -euo pipefail
+          case "$AKTION" in
+            pruefen) echo 'Pruefmodus: OneDrive bleibt unveraendert.' ;;
+            reparieren)
+              test "$BESTAETIGUNG" = 'WIEDERHERSTELLEN' || {
+                echo 'ABBRUCH: Sicherheitsbestaetigung nicht korrekt.'; exit 2;
+              }
+              echo 'Reparatur nach Sicherung freigegeben.' ;;
+            *) echo 'ABBRUCH: Ungueltige Aktion.'; exit 2 ;;
+          esac
+      - name: Dateien aus GitHub laden
+        uses: actions/checkout@v4
+      - name: rclone installieren
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            https://downloads.rclone.org/rclone-current-linux-amd64.zip \
+            -o "$RUNNER_TEMP/rclone.zip"
+          mkdir -p "$RUNNER_TEMP/rclone-extract" "$RUNNER_TEMP/rclone-bin"
+          unzip -q "$RUNNER_TEMP/rclone.zip" -d "$RUNNER_TEMP/rclone-extract"
+          find "$RUNNER_TEMP/rclone-extract" -type f -name rclone \
+            -exec cp {} "$RUNNER_TEMP/rclone-bin/rclone" \;
+          test -s "$RUNNER_TEMP/rclone-bin/rclone"
+          chmod +x "$RUNNER_TEMP/rclone-bin/rclone"
+          echo "$RUNNER_TEMP/rclone-bin" >> "$GITHUB_PATH"
+      - name: OneDrive-Konfiguration sicher bereitstellen
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$LIGA_RCLONE_CONFIG_B64" || { echo 'OneDrive-Secret fehlt.'; exit 2; }
+          mkdir -p "$RUNNER_TEMP/liga-secret"
+          chmod 700 "$RUNNER_TEMP/liga-secret"
+          printf '%s' "$LIGA_RCLONE_CONFIG_B64" | base64 --decode > "$RUNNER_TEMP/liga-secret/rclone.conf"
+          chmod 600 "$RUNNER_TEMP/liga-secret/rclone.conf"
+          echo "RCLONE_CONFIG=$RUNNER_TEMP/liga-secret/rclone.conf" >> "$GITHUB_ENV"
+          rclone --config "$RUNNER_TEMP/liga-secret/rclone.conf" listremotes | grep -qx 'liga-onedrive:' || {
+            echo 'Remote liga-onedrive fehlt in Konfiguration.'; exit 2;
+          }
+      - name: Fuenf Match-Dateien kontrollieren oder nach Backup ergaenzen
+        shell: bash
+        env:
+          AKTION: ${{ inputs.aktion }}
+        run: |
+          set -euo pipefail
+          if [ "$AKTION" = 'pruefen' ]; then
+            python3 cloud/scripts/scoring-recovery.py
+          else
+            python3 cloud/scripts/scoring-recovery.py --apply --confirm WIEDERHERSTELLEN
+          fi
