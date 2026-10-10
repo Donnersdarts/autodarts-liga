@@ -1,0 +1,75 @@
+name: Autodarts Liga – Cloud-Veröffentlichung (sicherer Test)
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Nicht zur vollen Stunde starten. GitHub kann Zeitpläne verzögern.
+    - cron: '7,22,37,52 * * * *'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: autodarts-liga-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: OneDrive lesen & Liga-Webseite erstellen
+    runs-on: ubuntu-latest
+    # Geplante Durchläufe erst nach Freigabe aktivieren; manuelles Testen jederzeit erlaubt.
+    if: github.event_name == 'workflow_dispatch' || vars.LIGA_PUBLISH_ENABLED == 'true'
+    steps:
+      - name: Cloud-Publisher aus Repository holen
+        uses: actions/checkout@v4
+      - name: Go einrichten
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Rclone installieren (offizielle Download-Adresse)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            https://downloads.rclone.org/rclone-current-linux-amd64.zip -o "$RUNNER_TEMP/rclone.zip"
+          mkdir -p "$RUNNER_TEMP/rclone-extract" "$RUNNER_TEMP/rclone-bin"
+          unzip -q "$RUNNER_TEMP/rclone.zip" -d "$RUNNER_TEMP/rclone-extract"
+          find "$RUNNER_TEMP/rclone-extract" -type f -name rclone -exec cp {} "$RUNNER_TEMP/rclone-bin/rclone" \;
+          test -s "$RUNNER_TEMP/rclone-bin/rclone"
+          chmod +x "$RUNNER_TEMP/rclone-bin/rclone"
+          echo "$RUNNER_TEMP/rclone-bin" >> "$GITHUB_PATH"
+      - name: OneDrive auslesen, Webseite mit v0.9.3-Logik erstellen
+        shell: bash
+        env:
+          LIGA_RCLONE_CONFIG_B64: ${{ secrets.LIGA_RCLONE_CONFIG_B64 }}
+          LIGA_ONEDRIVE_ORDNER: ${{ vars.LIGA_ONEDRIVE_ORDNER || 'Autodarts Liga' }}
+        run: bash cloud/scripts/build-site.sh
+      - name: Test-HTML als Artefakt hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: liga-html-test
+          path: site/
+          retention-days: 2
+      - name: GitHub Pages vorbereiten (nur bei Freigabe)
+        if: vars.LIGA_PUBLISH_ENABLED == 'true'
+        uses: actions/configure-pages@v5
+      - name: Webseite als Pages-Artefakt hochladen (nur bei Freigabe)
+        if: vars.LIGA_PUBLISH_ENABLED == 'true'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  deploy:
+    name: Webseite veröffentlichen (nur bei Freigabe)
+    if: vars.LIGA_PUBLISH_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Veröffentlichung über GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
