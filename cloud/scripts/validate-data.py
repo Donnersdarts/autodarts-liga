@@ -54,3 +54,43 @@ if valid < 1:
     sys.exit('FEHLER: Keine gültigen Ligamatches gefunden. Bestehende Webseite bleibt erhalten.')
 print(f'Validierung OK: Liga={name!r}, Saison={current!r}, Matches={valid}, aktive Saison Matches={active}, übersprungene Dateien={invalid}.')
 # Archivierte Saison darf aktiv leer sein; dabei bleiben die Historie und Saisonwahl gültig.
+
+# Read-only Scoring-Diagnose: fehlende/nicht numerische Werte im Aktiven Saisonbestand
+import math
+SCORING_KEYS = ('scores57Plus', 'scores95Plus', 'scores114Plus', 'scores133Plus',
+                'scores171', 'scores174', 'scores177', 'oneEighties')
+problem_players = 0
+problem_matches = 0
+for path in sorted(match_dir.glob('*.json')):
+    try:
+        record = json.loads(path.read_text(encoding='utf-8'))
+        match = record.get('match') or {}
+        if (record.get('format') != 'autodarts-match-analytics-league-match' or
+            str(record.get('league', {}).get('name', '')).strip().casefold() != name.casefold() or
+            str(match.get('seasonId', '')) != current or
+            match.get('usageMode') != 'league'):
+            continue
+        bad_in_match = False
+        for player in match.get('players') or []:
+            metrics = player.get('metrics') if isinstance(player, dict) else None
+            if not isinstance(metrics, dict):
+                metrics = {}
+            absent = []
+            for key in SCORING_KEYS:
+                value = metrics.get(key)
+                try:
+                    if isinstance(value, bool) or value is None or not math.isfinite(float(value)) or float(value) < 0 or not float(value).is_integer():
+                        absent.append(key)
+                except (TypeError, ValueError, OverflowError):
+                    absent.append(key)
+            if absent:
+                problem_players += 1
+                bad_in_match = True
+                p_name = str(player.get('realName') or player.get('autodartsName') or player.get('name') or '?')
+                mid = str(match.get('matchId') or path.stem)
+                print(f'SCORING_WARN: Match={mid}, Spieler={p_name}, unvollstaendig={",".join(absent)}')
+        if bad_in_match:
+            problem_matches += 1
+    except (ValueError, OSError, TypeError, AttributeError) as exc:
+        print(f'SCORING_WARN: Datei {path.name} konnte nicht genauer untersucht werden: {exc}')
+print(f'SCORING_DIAGNOSE: {problem_matches} aktive Matches mit unvollstaendigen Scoringdaten, {problem_players} Spieler-Eintraege betroffen. KEINE AENDERUNG AN ONEDRIVE.')
