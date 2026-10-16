@@ -74,6 +74,7 @@ type PlayerOverview struct {
 	Scores177        int
 	OneEighties      int
 	ScoringComplete  bool
+	ScoringKnown     map[string]bool
 	HighFinish       int
 	Darts            int
 }
@@ -125,6 +126,8 @@ type MatchOverview struct {
 	Highlights2       PlayerHighlights
 	ScoringComplete1  bool
 	ScoringComplete2  bool
+	ScoringKnown1     map[string]bool
+	ScoringKnown2     map[string]bool
 }
 
 type LeagueOverview struct {
@@ -190,17 +193,26 @@ func metricInt(metrics map[string]interface{}, key string) int {
 	return 0
 }
 
+func scoringKnown(metrics map[string]interface{}) map[string]bool {
+	known := make(map[string]bool)
+	for _, key := range []string{"scores57Plus", "scores95Plus", "scores114Plus", "scores133Plus", "scores171", "scores174", "scores177", "oneEighties"} {
+		_, ok := metricFloat(metrics, key)
+		known[key] = ok
+	}
+	return known
+}
 func scoreOrDash(complete bool, value int) string {
 	if complete {
 		return strconv.Itoa(value)
 	}
-	return "–"
+	// Nur bekannte Matchwerte addieren: Untergrenze statt fälschlich '0' oder Totalverlust als '–'.
+	return "≥" + strconv.Itoa(value) + "*"
 }
 func scoreCell(complete bool, value int) xCell {
 	if complete {
 		return xn(value, 4)
 	}
-	return xs("–", 4)
+	return xs("≥"+strconv.Itoa(value)+"*", 4)
 }
 
 func parseAnyTime(vals ...string) time.Time {
@@ -430,6 +442,7 @@ func makeLeagueOverview(league, seasonID, seasonName string, isCurrent bool, raw
 				a.P.CheckoutHits += int(math.Round(hits))
 				a.P.CheckoutAttempts += int(math.Round(attempts))
 			}
+			_, has57 := metricFloat(p.Metrics, "scores57Plus")
 			_, has95 := metricFloat(p.Metrics, "scores95Plus")
 			_, has114 := metricFloat(p.Metrics, "scores114Plus")
 			_, has133 := metricFloat(p.Metrics, "scores133Plus")
@@ -439,8 +452,15 @@ func makeLeagueOverview(league, seasonID, seasonName string, isCurrent bool, raw
 			_, has180 := metricFloat(p.Metrics, "oneEighties")
 			if a.P.Matches == 1 {
 				a.P.ScoringComplete = true
+				a.P.ScoringKnown = scoringKnown(p.Metrics)
+			} else {
+				for key, ok := range scoringKnown(p.Metrics) {
+					if !ok {
+						a.P.ScoringKnown[key] = false
+					}
+				}
 			}
-			if !has95 || !has114 || !has133 || !has171 || !has174 || !has177 || !has180 {
+			if !has57 || !has95 || !has114 || !has133 || !has171 || !has174 || !has177 || !has180 {
 				a.P.ScoringComplete = false
 			}
 			a.P.Scores95Plus += metricInt(p.Metrics, "scores95Plus")
@@ -484,6 +504,7 @@ func makeLeagueOverview(league, seasonID, seasonName string, isCurrent bool, raw
 				_, c177 := metricFloat(m.Players[0].Metrics, "scores177")
 				_, c180 := metricFloat(m.Players[0].Metrics, "oneEighties")
 				mo.ScoringComplete1 = c57 && c95 && c114 && c133 && c171 && c174 && c177 && c180
+				mo.ScoringKnown1 = scoringKnown(m.Players[0].Metrics)
 				mo.Scores57P1 = metricInt(m.Players[0].Metrics, "scores57Plus")
 				mo.Scores95P1 = metricInt(m.Players[0].Metrics, "scores95Plus")
 				mo.Scores114P1 = metricInt(m.Players[0].Metrics, "scores114Plus")
@@ -526,6 +547,7 @@ func makeLeagueOverview(league, seasonID, seasonName string, isCurrent bool, raw
 				_, c177 := metricFloat(m.Players[1].Metrics, "scores177")
 				_, c180 := metricFloat(m.Players[1].Metrics, "oneEighties")
 				mo.ScoringComplete2 = c57 && c95 && c114 && c133 && c171 && c174 && c177 && c180
+				mo.ScoringKnown2 = scoringKnown(m.Players[1].Metrics)
 				mo.Scores57P2 = metricInt(m.Players[1].Metrics, "scores57Plus")
 				mo.Scores95P2 = metricInt(m.Players[1].Metrics, "scores95Plus")
 				mo.Scores114P2 = metricInt(m.Players[1].Metrics, "scores114Plus")
@@ -970,14 +992,14 @@ func writeHTMLOverview(path string, ov LeagueOverview, seasons []SeasonInfo, cur
 		if len(p.Aliases) > 0 {
 			aliases = `<div class="muted">` + htmlE(strings.Join(p.Aliases, " · ")) + `</div>`
 		}
-		fmt.Fprintf(&b, `<tr><td><b>%s</b>%s</td><td>%d</td><td>%d</td><td>%d</td><td>%d:%d</td><td class="%s">%+d</td><td>%.2f</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%s</td></tr>`, htmlE(p.Name), aliases, p.Matches, p.Wins, p.Losses, p.LegsFor, p.LegsAgainst, cls, p.LegDiff, p.Average, fmtCheckoutPct(p.CheckoutPct, p.CheckoutAttempts), scoreOrDash(p.ScoringComplete, p.Scores95Plus), scoreOrDash(p.ScoringComplete, p.Scores114Plus), scoreOrDash(p.ScoringComplete, p.Scores133Plus), scoreOrDash(p.ScoringComplete, p.Scores171), scoreOrDash(p.ScoringComplete, p.Scores174), scoreOrDash(p.ScoringComplete, p.Scores177), p.OneEighties, func() string {
+		fmt.Fprintf(&b, `<tr><td><b>%s</b>%s</td><td>%d</td><td>%d</td><td>%d</td><td>%d:%d</td><td class="%s">%+d</td><td>%.2f</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`, htmlE(p.Name), aliases, p.Matches, p.Wins, p.Losses, p.LegsFor, p.LegsAgainst, cls, p.LegDiff, p.Average, fmtCheckoutPct(p.CheckoutPct, p.CheckoutAttempts), scoreOrDash(p.ScoringKnown["scores95Plus"], p.Scores95Plus), scoreOrDash(p.ScoringKnown["scores114Plus"], p.Scores114Plus), scoreOrDash(p.ScoringKnown["scores133Plus"], p.Scores133Plus), scoreOrDash(p.ScoringKnown["scores171"], p.Scores171), scoreOrDash(p.ScoringKnown["scores174"], p.Scores174), scoreOrDash(p.ScoringKnown["scores177"], p.Scores177), scoreOrDash(p.ScoringKnown["oneEighties"], p.OneEighties), func() string {
 			if p.HighFinish > 0 {
 				return strconv.Itoa(p.HighFinish)
 			}
 			return "–"
 		}())
 	}
-	b.WriteString(`</tbody></table><div class="muted" style="margin-top:9px">Scoring exklusiv: 95+ = 95–113 · 114+ = 114–132 · 133+ = 133–170 · 171 / 174 / 177 / 180 jeweils exakt. „–“ bedeutet: mindestens ein altes Match muss einmal neu ausgewertet werden.</div></div>`)
+	b.WriteString(`</tbody></table><div class="muted" style="margin-top:9px">Scoring exklusiv: 95+ = 95–113 · 114+ = 114–132 · 133+ = 133–170 · 171 / 174 / 177 / 180 jeweils exakt. „≥ Zahl*“ = bisher nachweisbarer Mindestwert; mindestens ein Match hat unvollständige Scoring-Daten. Dieser Wert ist KEIN vollständiger Saisonwert. Betroffene Spiele im GitHub-Actions-Protokoll ermitteln und erneut mit vollständiger Wurfhistorie auswerten.</div></div>`)
 	writeSeasonHighlightsHTML(&b, ov)
 	b.WriteString(`<div class="panel"><h2>Ergebnisse</h2><div class="matches">`)
 	matches := append([]MatchOverview(nil), ov.Matches...)
@@ -1054,14 +1076,14 @@ func writeHTMLOverview(path string, ov LeagueOverview, seasons []SeasonInfo, cur
 			{"First 9", floatText(m.First91, 2), floatText(m.First92, 2)},
 			{"Checkout", coText(m.Checkout1, m.CheckoutHits1, m.CheckoutAttempts1), coText(m.Checkout2, m.CheckoutHits2, m.CheckoutAttempts2)},
 			{"Höchstes Finish", hf(m.HF1), hf(m.HF2)},
-			{"57+", scoreText(m.ScoringComplete1, m.Scores57P1), scoreText(m.ScoringComplete2, m.Scores57P2)},
-			{"95+", scoreText(m.ScoringComplete1, m.Scores95P1), scoreText(m.ScoringComplete2, m.Scores95P2)},
-			{"114+", scoreText(m.ScoringComplete1, m.Scores114P1), scoreText(m.ScoringComplete2, m.Scores114P2)},
-			{"133+", scoreText(m.ScoringComplete1, m.Scores133P1), scoreText(m.ScoringComplete2, m.Scores133P2)},
-			{"171", scoreText(m.ScoringComplete1, m.Scores171P1), scoreText(m.ScoringComplete2, m.Scores171P2)},
-			{"174", scoreText(m.ScoringComplete1, m.Scores174P1), scoreText(m.ScoringComplete2, m.Scores174P2)},
-			{"177", scoreText(m.ScoringComplete1, m.Scores177P1), scoreText(m.ScoringComplete2, m.Scores177P2)},
-			{"180", strconv.Itoa(m.OneEighties1), strconv.Itoa(m.OneEighties2)},
+			{"57+", scoreText(m.ScoringKnown1["scores57Plus"], m.Scores57P1), scoreText(m.ScoringKnown2["scores57Plus"], m.Scores57P2)},
+			{"95+", scoreText(m.ScoringKnown1["scores95Plus"], m.Scores95P1), scoreText(m.ScoringKnown2["scores95Plus"], m.Scores95P2)},
+			{"114+", scoreText(m.ScoringKnown1["scores114Plus"], m.Scores114P1), scoreText(m.ScoringKnown2["scores114Plus"], m.Scores114P2)},
+			{"133+", scoreText(m.ScoringKnown1["scores133Plus"], m.Scores133P1), scoreText(m.ScoringKnown2["scores133Plus"], m.Scores133P2)},
+			{"171", scoreText(m.ScoringKnown1["scores171"], m.Scores171P1), scoreText(m.ScoringKnown2["scores171"], m.Scores171P2)},
+			{"174", scoreText(m.ScoringKnown1["scores174"], m.Scores174P1), scoreText(m.ScoringKnown2["scores174"], m.Scores174P2)},
+			{"177", scoreText(m.ScoringKnown1["scores177"], m.Scores177P1), scoreText(m.ScoringKnown2["scores177"], m.Scores177P2)},
+			{"180", scoreText(m.ScoringKnown1["oneEighties"], m.OneEighties1), scoreText(m.ScoringKnown2["oneEighties"], m.OneEighties2)},
 			{"Darts", strconv.Itoa(m.Darts1), strconv.Itoa(m.Darts2)},
 		}
 		b.WriteString(`<div class="stat-table">`)
@@ -1223,7 +1245,7 @@ func writeXLSXOverview(path string, ov LeagueOverview) error {
 		if p.CheckoutAttempts > 0 {
 			co = p.CheckoutPct
 		}
-		overviewRows = append(overviewRows, []xCell{xs(p.Name, 3), xn(p.Matches, 4), xn(p.Wins, 4), xn(p.Losses, 4), xs(fmt.Sprintf("%d:%d", p.LegsFor, p.LegsAgainst), 4), xn(p.LegDiff, 4), xn(p.Average, 5), xn(co, 5), scoreCell(p.ScoringComplete, p.Scores95Plus), scoreCell(p.ScoringComplete, p.Scores114Plus), scoreCell(p.ScoringComplete, p.Scores133Plus), scoreCell(p.ScoringComplete, p.Scores171), scoreCell(p.ScoringComplete, p.Scores174), scoreCell(p.ScoringComplete, p.Scores177), xn(p.OneEighties, 4), xn(hf, 4)})
+		overviewRows = append(overviewRows, []xCell{xs(p.Name, 3), xn(p.Matches, 4), xn(p.Wins, 4), xn(p.Losses, 4), xs(fmt.Sprintf("%d:%d", p.LegsFor, p.LegsAgainst), 4), xn(p.LegDiff, 4), xn(p.Average, 5), xn(co, 5), scoreCell(p.ScoringKnown["scores95Plus"], p.Scores95Plus), scoreCell(p.ScoringKnown["scores114Plus"], p.Scores114Plus), scoreCell(p.ScoringKnown["scores133Plus"], p.Scores133Plus), scoreCell(p.ScoringKnown["scores171"], p.Scores171), scoreCell(p.ScoringKnown["scores174"], p.Scores174), scoreCell(p.ScoringKnown["scores177"], p.Scores177), scoreCell(p.ScoringKnown["oneEighties"], p.OneEighties), xn(hf, 4)})
 	}
 	overviewRows = append(overviewRows, []xCell{}, []xCell{xs("Spieltage", 2), xs("Matches", 2)})
 	for i, c := range ov.DayCounts {
@@ -1241,7 +1263,7 @@ func writeXLSXOverview(path string, ov LeagueOverview) error {
 		if m.Avg2 != nil {
 			avg2 = *m.Avg2
 		}
-		row := []xCell{xn(m.Matchday, 4), xs(formatDateDE(m.Date), 3), xs(m.Player1, 3), xs(m.Player2, 3), xs(fmt.Sprintf("%d:%d", m.Score1, m.Score2), 4), xs(m.Winner, 3), xn(avg1, 5), xn(avg2, 5), xn(m.Scores57P1, 4), xn(m.Scores57P2, 4), xn(m.Scores95P1, 4), xn(m.Scores95P2, 4), xn(m.Scores114P1, 4), xn(m.Scores114P2, 4), xn(m.Scores133P1, 4), xn(m.Scores133P2, 4), xn(m.Scores171P1, 4), xn(m.Scores171P2, 4), xn(m.Scores174P1, 4), xn(m.Scores174P2, 4), xn(m.Scores177P1, 4), xn(m.Scores177P2, 4), xn(m.OneEighties1, 4), xn(m.OneEighties2, 4), xn(m.HF1, 4), xn(m.HF2, 4)}
+		row := []xCell{xn(m.Matchday, 4), xs(formatDateDE(m.Date), 3), xs(m.Player1, 3), xs(m.Player2, 3), xs(fmt.Sprintf("%d:%d", m.Score1, m.Score2), 4), xs(m.Winner, 3), xn(avg1, 5), xn(avg2, 5), scoreCell(m.ScoringKnown1["scores57Plus"], m.Scores57P1), scoreCell(m.ScoringKnown2["scores57Plus"], m.Scores57P2), scoreCell(m.ScoringKnown1["scores95Plus"], m.Scores95P1), scoreCell(m.ScoringKnown2["scores95Plus"], m.Scores95P2), scoreCell(m.ScoringKnown1["scores114Plus"], m.Scores114P1), scoreCell(m.ScoringKnown2["scores114Plus"], m.Scores114P2), scoreCell(m.ScoringKnown1["scores133Plus"], m.Scores133P1), scoreCell(m.ScoringKnown2["scores133Plus"], m.Scores133P2), scoreCell(m.ScoringKnown1["scores171"], m.Scores171P1), scoreCell(m.ScoringKnown2["scores171"], m.Scores171P2), scoreCell(m.ScoringKnown1["scores174"], m.Scores174P1), scoreCell(m.ScoringKnown2["scores174"], m.Scores174P2), scoreCell(m.ScoringKnown1["scores177"], m.Scores177P1), scoreCell(m.ScoringKnown2["scores177"], m.Scores177P2), scoreCell(m.ScoringKnown1["oneEighties"], m.OneEighties1), scoreCell(m.ScoringKnown2["oneEighties"], m.OneEighties2), xn(m.HF1, 4), xn(m.HF2, 4)}
 		dayRows = append(dayRows, row)
 		allRows = append(allRows, append(append([]xCell{}, row...), xs(m.MatchID, 3), xs("https://play.autodarts.com/history/matches/"+m.MatchID, 3)))
 	}
@@ -1250,7 +1272,7 @@ func writeXLSXOverview(path string, ov LeagueOverview) error {
 	playerRows := [][]xCell{{xs("Spieler", 2), xs("Autodarts-Name(n)", 2), xs("Spiele", 2), xs("Siege", 2), xs("Niederlagen", 2), xs("Legs +", 2), xs("Legs -", 2), xs("+/-", 2), xs("Ø AVG", 2), xs("Checkout %", 2), xs("95+", 2), xs("114+", 2), xs("133+", 2), xs("171", 2), xs("174", 2), xs("177", 2), xs("180", 2), xs("Höchstes Finish", 2), xs("Darts", 2)}}
 	for _, p := range ov.Players {
 		aliases := strings.Join(p.Aliases, " · ")
-		playerRows = append(playerRows, []xCell{xs(p.Name, 3), xs(aliases, 3), xn(p.Matches, 4), xn(p.Wins, 4), xn(p.Losses, 4), xn(p.LegsFor, 4), xn(p.LegsAgainst, 4), xn(p.LegDiff, 4), xn(p.Average, 5), xn(p.CheckoutPct, 5), scoreCell(p.ScoringComplete, p.Scores95Plus), scoreCell(p.ScoringComplete, p.Scores114Plus), scoreCell(p.ScoringComplete, p.Scores133Plus), scoreCell(p.ScoringComplete, p.Scores171), scoreCell(p.ScoringComplete, p.Scores174), scoreCell(p.ScoringComplete, p.Scores177), xn(p.OneEighties, 4), xn(p.HighFinish, 4), xn(p.Darts, 4)})
+		playerRows = append(playerRows, []xCell{xs(p.Name, 3), xs(aliases, 3), xn(p.Matches, 4), xn(p.Wins, 4), xn(p.Losses, 4), xn(p.LegsFor, 4), xn(p.LegsAgainst, 4), xn(p.LegDiff, 4), xn(p.Average, 5), xn(p.CheckoutPct, 5), scoreCell(p.ScoringKnown["scores95Plus"], p.Scores95Plus), scoreCell(p.ScoringKnown["scores114Plus"], p.Scores114Plus), scoreCell(p.ScoringKnown["scores133Plus"], p.Scores133Plus), scoreCell(p.ScoringKnown["scores171"], p.Scores171), scoreCell(p.ScoringKnown["scores174"], p.Scores174), scoreCell(p.ScoringKnown["scores177"], p.Scores177), scoreCell(p.ScoringKnown["oneEighties"], p.OneEighties), xn(p.HighFinish, 4), xn(p.Darts, 4)})
 	}
 	sheets = append(sheets, xSheet{Name: "Spielerstatistik", Rows: playerRows, ColWidths: []float64{24, 28, 10, 10, 12, 10, 10, 10, 11, 14, 9, 9, 9, 9, 9, 9, 9, 12, 10}, FreezeRow: 1, AutoFilter: fmt.Sprintf("A1:S%d", len(playerRows))})
 	return createXLSX(path, sheets)
