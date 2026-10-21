@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   schedule:
     # Nicht zur vollen Stunde starten. GitHub kann Zeitpläne verzögern.
-    - cron: '7,22,37,52 * * * *'
+    - cron: '2-59/5 * * * *'
 
 permissions:
   contents: read
