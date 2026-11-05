@@ -61,6 +61,11 @@ PY
 mkdir -p "$ROOT/site"
 cp "$WORK/app/Liga-Übersicht.html" "$ROOT/site/index.html"
 find "$WORK/app" -maxdepth 1 -type f -name 'season-*.html' -exec cp {} "$ROOT/site/" \;
+# Optionaler Spielplan aus dem gemeinsamen OneDrive: nur lesen, nie dort schreiben.
+python3 "$ROOT/cloud/scripts/insert-spielplan.py" "$ROOT/site" "$WORK/app/Liga-Daten"
+# Prüfsumme der OneDrive-Ligadaten UND Spielplan.csv, 60s Auto-Refresh.
+cp "$ROOT/cloud/scripts/auto-refresh.js" "$ROOT/site/auto-refresh.js"
+python3 "$ROOT/cloud/scripts/enable-auto-refresh.py" "$ROOT/site" "$WORK/app/Liga-Daten"
 test -s "$ROOT/site/index.html"
 if ! grep -q 'AUTODARTS LIGA' "$ROOT/site/index.html"; then
     echo 'FEHLER: Ungültige HTML-Ausgabe.' >&2
