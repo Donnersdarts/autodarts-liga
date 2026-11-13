@@ -1009,7 +1009,7 @@ func writeFinalSectionHTML(b *strings.Builder, st *FinalState) {
 	if st == nil {
 		return
 	}
-	b.WriteString(`<style>.final-panel{position:relative}.final-lock{opacity:.58;filter:grayscale(.45)}.final-progress{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 16px}.final-progress span{border:1px solid #30465d;border-radius:999px;padding:6px 10px;font-size:12px;color:#bdd4e9}.frozen-badge{display:inline-block;margin-left:8px;border:1px solid #4aa882;background:#102b27;color:#74efbc;border-radius:999px;padding:4px 8px;font-size:11px;font-weight:800}.final-order{display:grid;gap:10px}.final-game{position:relative;border:1px solid #2b4054;background:#0d1826;border-radius:12px;padding:12px}.final-game.ready{border-color:#52a8f5;box-shadow:0 0 0 1px #52a8f533}.final-game.completed{border-color:#2b8d68;background:#102722}.final-game.locked{opacity:.58}.final-game .ord{font-size:10px;letter-spacing:.12em;color:#8ec4ff;font-weight:900}.final-game h3{margin:4px 0 10px;font-size:14px}.final-players{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center}.final-players span:last-child{text-align:right}.final-score{font-weight:900;font-size:18px}.final-winner{color:#59e391;font-weight:800}.champion{margin:12px 0 18px;padding:20px;border:1px solid #e7b84b;background:linear-gradient(135deg,#352711,#151d2a);border-radius:16px;text-align:center}.champion .cup{font-size:28px}.champion strong{display:block;font-size:28px;margin:4px}.final-bracket{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;align-items:center;margin:14px 0}.bracket-col{display:grid;gap:12px}.bracket-title{font-size:11px;letter-spacing:.12em;color:#8ec4ff;font-weight:900;text-align:center}.final-stats-note{margin:8px 0;color:#9cb0c5;font-size:12px}@media(max-width:760px){.final-bracket{grid-template-columns:1fr}.final-players{grid-template-columns:1fr auto 1fr}}</style>`)
+	b.WriteString(`<style>.final-panel{position:relative}.final-lock{opacity:.58;filter:grayscale(.45)}.final-progress{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 16px}.final-progress span{border:1px solid #30465d;border-radius:999px;padding:6px 10px;font-size:12px;color:#bdd4e9}.frozen-badge{display:inline-block;margin-left:8px;border:1px solid #4aa882;background:#102b27;color:#74efbc;border-radius:999px;padding:4px 8px;font-size:11px;font-weight:800}.final-order{display:grid;gap:10px}.final-game{position:relative;border:1px solid #2b4054;background:#0d1826;border-radius:12px;padding:12px}.final-game.ready{border-color:#52a8f5;box-shadow:0 0 0 1px #52a8f533}.final-game.completed{border-color:#2b8d68;background:#102722}.final-game.locked{opacity:.58}.final-game .ord{font-size:10px;letter-spacing:.12em;color:#8ec4ff;font-weight:900}.final-game h3{margin:4px 0 10px;font-size:14px}.final-players{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center}.final-players span:last-child{text-align:right}.final-score{font-weight:900;font-size:18px}.final-winner{color:#59e391;font-weight:800}.champion{margin:12px 0 18px;padding:20px;border:1px solid #e7b84b;background:linear-gradient(135deg,#352711,#151d2a);border-radius:16px;text-align:center}.champion .cup{font-size:28px}.champion strong{display:block;font-size:28px;margin:4px}.final-bracket{display:grid;grid-template-columns:1.15fr .9fr 1fr;gap:28px;align-items:center;margin:18px 0}.bracket-col{display:grid;gap:12px;position:relative}.bracket-col.link-right:after{content:'';position:absolute;right:-28px;top:50%;width:28px;border-top:2px solid #35536e}.bracket-title{font-size:11px;letter-spacing:.12em;color:#8ec4ff;font-weight:900;text-align:center}.bracket-placeholder{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;color:#9cb0c5;font-size:12px}.bracket-placeholder span:last-child{text-align:right}.final-sequence{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0 16px}.final-sequence span{font-size:11px;border:1px solid #2b4054;border-radius:999px;padding:5px 8px;color:#a9bdd0}.final-sequence b{color:#e9f5ff}.final-stats-note{margin:8px 0;color:#9cb0c5;font-size:12px}@media(max-width:760px){.final-bracket{grid-template-columns:1fr}.final-players{grid-template-columns:1fr auto 1fr}}</style>`)
 	class := "panel final-panel"
 	if !st.Available {
 		class += " final-lock"
@@ -1022,11 +1022,20 @@ func writeFinalSectionHTML(b *strings.Builder, st *FinalState) {
 	fmt.Fprintf(b, `<div class="final-progress"><span>%d/%d Ligaspiele</span><span>%d/%d vollständige Spieltage</span><span>%d/%d Paarungen vollständig</span></div>`, st.Progress.CompletedMatches, st.Progress.ExpectedMatches, st.Progress.MatchdaysComplete, expectedMatchdays, st.Progress.PairingsComplete, st.Progress.PairingsExpected)
 	if !st.Available {
 		b.WriteString(`<div class="muted">Noch gesperrt: ` + htmlE(st.Progress.Reason) + `. Die Finalrunde wird automatisch erzeugt, sobald die reguläre Saison vollständig ist.</div>`)
-		b.WriteString(`<div class="final-order">`)
-		for _, f := range st.Fixtures {
-			fmt.Fprintf(b, `<div class="final-game locked"><span class="ord">SPIEL %d</span><h3>%s</h3><div class="muted">wird automatisch besetzt</div></div>`, f.Order, htmlE(f.Label))
+		b.WriteString(`<div class="final-sequence"><span><b>1</b> Platz 5/6</span><span><b>2</b> Halbfinale 1</span><span><b>3</b> Halbfinale 2</span><span><b>4</b> Platz 3</span><span><b>5</b> Finale</span></div>`)
+		renderLocked := func(f FinalFixture, p1, p2 string) {
+			fmt.Fprintf(b, `<div class="final-game locked"><span class="ord">SPIEL %d</span><h3>%s</h3><div class="bracket-placeholder"><span>%s</span><b>vs.</b><span>%s</span></div></div>`, f.Order, htmlE(f.Label), htmlE(p1), htmlE(p2))
 		}
-		b.WriteString(`</div></div>`)
+		b.WriteString(`<div class="bracket-title" style="text-align:left;margin-top:14px">PLATZ 5/6</div>`)
+		renderLocked(st.Fixtures[0], "Platz 5", "Platz 6")
+		b.WriteString(`<div class="final-bracket"><div class="bracket-col link-right"><div class="bracket-title">HALBFINALE</div>`)
+		renderLocked(st.Fixtures[1], "Platz 1", "Platz 4")
+		renderLocked(st.Fixtures[2], "Platz 2", "Platz 3")
+		b.WriteString(`</div><div class="bracket-col link-right"><div class="bracket-title">SPIEL UM PLATZ 3</div>`)
+		renderLocked(st.Fixtures[3], "Verlierer HF1", "Verlierer HF2")
+		b.WriteString(`</div><div class="bracket-col"><div class="bracket-title">FINALE</div>`)
+		renderLocked(st.Fixtures[4], "Sieger HF1", "Sieger HF2")
+		b.WriteString(`</div></div></div>`)
 		return
 	}
 	if st.Status == "completed" && st.Champion != "" {

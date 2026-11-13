@@ -128,8 +128,11 @@ def matches(folder):
             return {norm(p.get(key)) for key in ('name','realName','autodartsName') if p.get(key)}
         names=[aliases(p) for p in players]
         if not all(names): continue
+        winner=m.get('winner')
+        if winner not in (0,1): winner=None
         found.append({'day':m.get('matchday'), 'season':m.get('seasonId') or obj.get('league',{}).get('seasonId'),
-            'players':names, 'score':score, 'id':m.get('matchId'), 'league':obj.get('league',{}).get('name','')})
+            'players':names, 'score':score, 'id':m.get('matchId'), 'league':obj.get('league',{}).get('name',''),
+            'walkover':bool(m.get('walkover')), 'winner':winner})
     return found
 
 
@@ -141,9 +144,11 @@ def fixture_result(f, matches, season, league):
         if league and m['league'] and norm(m['league'])!=norm(league): continue
         na,nb=norm(f['a']),norm(f['b'])
         if na in m['players'][0] and nb in m['players'][1]:
-            compatible.append((m['score'][0],m['score'][1],m['id']))
+            winner = f['a'] if m.get('winner') == 0 else (f['b'] if m.get('winner') == 1 else '')
+            compatible.append((m['score'][0],m['score'][1],m['id'],m.get('walkover',False),winner))
         elif na in m['players'][1] and nb in m['players'][0]:
-            compatible.append((m['score'][1],m['score'][0],m['id']))
+            winner = f['b'] if m.get('winner') == 0 else (f['a'] if m.get('winner') == 1 else '')
+            compatible.append((m['score'][1],m['score'][0],m['id'],m.get('walkover',False),winner))
     if len(compatible)==1:
         return compatible[0]
     if len(compatible)>1:
@@ -170,9 +175,13 @@ def render(rows,matches_list,season,season_name,league):
             s.append(f'<details class="plan-day"{" open" if day==first_open else ""}><summary><span>Spieltag {day}</span><small>{played} von {len(group)} gespielt</small></summary><div class="plan-list">')
             for f,result in group:
                 if result:
-                    v1,v2,mid=result
-                    result_text=f'{v1} : {v2}'
-                    status='<b>Gespielt</b>'
+                    v1,v2,mid,walkover,wo_winner=result
+                    if walkover:
+                        result_text='WO'
+                        status='<b>Kampflos</b>'
+                    else:
+                        result_text=f'{v1} : {v2}'
+                        status='<b>Gespielt</b>'
                 else:
                     result_text='vs.'
                     status='<span class="plan-pending">Offen</span>'
@@ -182,7 +191,8 @@ def render(rows,matches_list,season,season_name,league):
                 if f['time']: details.append(text(f['time'])+' Uhr')
                 if f['place']: details.append(text(f['place']))
                 if f['note']: details.append(text(f['note']))
-                if result and re.fullmatch(r'[0-9a-fA-F-]{36}',str(result[2])):
+                if result and result[3] and result[4]: details.append('Kampflos für '+text(result[4]))
+                if result and not result[3] and re.fullmatch(r'[0-9a-fA-F-]{36}',str(result[2])):
                     details.append(f'<a href="https://play.autodarts.com/history/matches/{text(result[2])}" target="_blank" rel="noopener noreferrer">Match ansehen ↗</a>')
                 if details: s.append('<div class="plan-detail">'+' · '.join(details)+'</div>')
                 s.append('</div>')

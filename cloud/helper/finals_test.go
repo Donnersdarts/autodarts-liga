@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -176,5 +177,20 @@ func TestFinalWalkoverIsExcludedFromFinalDartStats(t *testing.T) {
 		if p.Name == "A" || p.Name == "D" {
 			t.Fatalf("walkover player leaked into dart stats: %#v", p)
 		}
+	}
+}
+
+func TestLockedFinalRendersGraphicalBracket(t *testing.T) {
+	st := previewFinalState(completeTestOverview())
+	var b strings.Builder
+	writeFinalSectionHTML(&b, st)
+	h := b.String()
+	for _, want := range []string{`class="final-bracket"`, "Platz 1", "Platz 4", "Verlierer HF1", "Verlierer HF2", "Sieger HF1", "Sieger HF2"} {
+		if !strings.Contains(h, want) {
+			t.Fatalf("locked final HTML missing %q", want)
+		}
+	}
+	if strings.Contains(h, `class="final-order"`) {
+		t.Fatal("locked final must render graphical bracket, not the old vertical list")
 	}
 }

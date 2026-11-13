@@ -1,4 +1,4 @@
-name: Autodarts Liga – Cloud-Veröffentlichung (Finalspieltag 0.9.7.2)
+name: Autodarts Liga – Cloud-Veröffentlichung (Finalspieltag 0.9.7.3)
 
 on:
   workflow_dispatch:
@@ -31,6 +31,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.23'
+          cache: false
 
       - name: Rclone installieren
         shell: bash
@@ -46,7 +47,7 @@ jobs:
           chmod +x "$RUNNER_TEMP/rclone-bin/rclone"
           echo "$RUNNER_TEMP/rclone-bin" >> "$GITHUB_PATH"
 
-      - name: OneDrive vollständig lesen und Liga mit Finalspieltag 0.9.7.2 bauen
+      - name: OneDrive vollständig lesen und Liga mit Finalspieltag 0.9.7.3 bauen
         shell: bash
         env:
           LIGA_RCLONE_CONFIG_B64: ${{ secrets.LIGA_RCLONE_CONFIG_B64 }}
@@ -61,7 +62,8 @@ jobs:
           test -s site/build-info.json
           grep -q 'AUTODARTS LIGA' site/index.html
           grep -q 'Finalspieltag' site/index.html
-          echo 'OK: Das aktuelle OneDrive-Build-Artefakt mit Finalspieltag liegt vollständig vor.'
+          grep -q 'id="spielplan"' site/index.html
+          echo 'OK: Das aktuelle OneDrive-Build-Artefakt mit Spielplan und Finalspieltag liegt vollständig vor.'
           cat site/build-info.json
 
       - name: Prüf-Artefakt speichern
