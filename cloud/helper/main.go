@@ -18,7 +18,7 @@ import (
 
 const (
 	appName       = "Autodarts Liga Sync Helper"
-	appVersion    = "0.9.3"
+	appVersion    = "0.9.7"
 	listenAddress = "127.0.0.1:17653"
 )
 
@@ -45,11 +45,14 @@ type LeagueInfo struct {
 }
 
 type SeasonInfo struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	CreatedAt  string `json:"createdAt"`
-	ArchivedAt string `json:"archivedAt,omitempty"`
-	Active     bool   `json:"active"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	CreatedAt   string `json:"createdAt"`
+	ArchivedAt  string `json:"archivedAt,omitempty"`
+	CompletedAt string `json:"completedAt,omitempty"`
+	Champion    string `json:"champion,omitempty"`
+	Closed      bool   `json:"closed,omitempty"`
+	Active      bool   `json:"active"`
 }
 
 type SeasonRegistry struct {
@@ -105,15 +108,19 @@ type DeleteMarker struct {
 }
 
 type Server struct {
-	mu            sync.RWMutex
-	seasonMu      sync.Mutex
-	overviewMu    sync.Mutex
-	webPublishMu  sync.Mutex
-	webStatusMu   sync.RWMutex
-	config        Config
-	configPath    string
-	webConfigPath string
-	webStatus     WebPublishStatus
+	mu             sync.RWMutex
+	seasonMu       sync.Mutex
+	matchWriteMu   sync.Mutex
+	overviewMu     sync.Mutex
+	finalMu        sync.Mutex
+	webPublishMu   sync.Mutex
+	webStatusMu    sync.RWMutex
+	triggerMu      sync.Mutex
+	triggerPending bool
+	config         Config
+	configPath     string
+	webConfigPath  string
+	webStatus      WebPublishStatus
 }
 
 func main() {
@@ -136,6 +143,9 @@ func main() {
 	mux.HandleFunc("/api/restore", srv.handleRestore)
 	mux.HandleFunc("/api/seasons", srv.handleSeasons)
 	mux.HandleFunc("/api/seasons/create", srv.handleSeasonCreate)
+	mux.HandleFunc("/api/finals", srv.handleFinals)
+	mux.HandleFunc("/api/final-match", srv.handleFinalMatch)
+	mux.HandleFunc("/api/walkover", srv.handleWalkover)
 	mux.HandleFunc("/api/overview", srv.handleOverview)
 	mux.HandleFunc("/api/web-status", srv.handleWebStatus)
 	mux.HandleFunc("/api/web-publish", srv.handleWebPublish)
@@ -802,12 +812,16 @@ func (s *Server) handleMatch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	if err := s.writeMatchFile(mf); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+	action, err := s.writeMatchFile(mf)
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	go s.generateOverviewForLeague(mf.League.Name)
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	if action != "unchanged" {
+		go s.generateOverviewForLeague(mf.League.Name)
+		s.queuePublishTrigger()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "action": action})
 }
 
 func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
@@ -820,8 +834,8 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	written := 0
-	failed := 0
+	written, unchanged, failed := 0, 0, 0
+	var failures []string
 	for _, raw := range req.Matches {
 		mf := MatchFile{
 			Format:    "autodarts-match-analytics-league-match",
@@ -830,81 +844,32 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 			UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 			Match:     raw,
 		}
-		if err := s.writeMatchFile(mf); err != nil {
+		action, err := s.writeMatchFile(mf)
+		if err != nil {
 			failed++
+			if len(failures) < 20 {
+				var ident MatchEntry
+				_ = json.Unmarshal(raw, &ident)
+				failures = append(failures, fmt.Sprintf("%s: %v", ident.MatchID, err))
+			}
+		} else if action == "unchanged" {
+			unchanged++
 		} else {
 			written++
 		}
 	}
 	if written > 0 {
 		go s.generateOverviewForLeague(req.League.Name)
+		s.queuePublishTrigger()
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "written": written, "failed": failed})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": failed == 0, "written": written, "unchanged": unchanged, "failed": failed, "errors": failures})
 }
 
-func (s *Server) writeMatchFile(mf MatchFile) error {
-	if mf.Format != "autodarts-match-analytics-league-match" {
-		return errors.New("unbekanntes Match-Dateiformat")
-	}
-	if strings.TrimSpace(mf.League.Name) == "" {
-		return errors.New("Liga-Name fehlt")
-	}
-	var entry MatchEntry
-	if err := json.Unmarshal(mf.Match, &entry); err != nil {
-		return errors.New("Matchdaten sind ungültig")
-	}
-	seasonID := strings.TrimSpace(entry.SeasonID)
-	if seasonID == "" {
-		seasonID = strings.TrimSpace(mf.League.SeasonID)
-	}
-	seasonName := strings.TrimSpace(entry.SeasonName)
-	if seasonName == "" {
-		seasonName = strings.TrimSpace(mf.League.SeasonName)
-	}
-	season, _, err := s.resolveSeason(mf.League.Name, seasonID, seasonName)
-	if err != nil {
-		return err
-	}
-	entry.SeasonID, entry.SeasonName = season.ID, season.Name
-	mf.League.SeasonID, mf.League.SeasonName = season.ID, season.Name
-	preserved, err := injectSeasonIntoMatch(mf.Match, season)
-	if err != nil {
-		return err
-	}
-	mf.Match = preserved
-	if !looksLikeUUID(entry.MatchID) {
-		return errors.New("ungültige Match-ID")
-	}
-	if entry.UsageMode != "league" || entry.Matchday < 1 || entry.Matchday > 10 {
-		return errors.New("nur Liga-Matches mit Spieltag 1–10 dürfen synchronisiert werden")
-	}
-	if s.readDeletedIDs(mf.League.Name)[strings.ToLower(entry.MatchID)] {
-		return errors.New("dieses Liga-Match wurde zentral gelöscht")
-	}
-	if mf.Version == 0 {
-		mf.Version = 1
-	}
-	mf.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	dir, err := s.ensureConfigured()
-	if err != nil {
-		return err
-	}
-	out, err := json.MarshalIndent(mf, "", "  ")
-	if err != nil {
-		return err
-	}
-	target := filepath.Join(dir, strings.ToLower(entry.MatchID)+".json")
-	tmp := target + ".tmp"
-	if err := os.WriteFile(tmp, out, 0o644); err != nil {
-		return err
-	}
-	// Windows cannot always rename over an existing target.
-	_ = os.Remove(target)
-	if err := os.Rename(tmp, target); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+// writeMatchFile is shared by individual and bulk uploads. Both paths are protected.
+func (s *Server) writeMatchFile(mf MatchFile) (string, error) {
+	s.matchWriteMu.Lock()
+	defer s.matchWriteMu.Unlock()
+	return s.writeMatchFileLocked(mf)
 }
 
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
@@ -950,6 +915,14 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		var me MatchEntry
 		if json.Unmarshal(mf.Match, &me) != nil || strings.ToLower(strings.TrimSpace(me.MatchID)) != req.MatchID {
 			continue
+		}
+		seasonID := strings.TrimSpace(me.SeasonID)
+		if seasonID == "" {
+			seasonID = strings.TrimSpace(mf.League.SeasonID)
+		}
+		if seasonID != "" && s.isSeasonFrozen(seasonID) {
+			writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": "Ligatabelle ist eingefroren; reguläre Saisonspiele können nach Freigabe des Finalspieltags nicht mehr gelöscht werden"})
+			return
 		}
 		if os.Remove(path) == nil {
 			removed++

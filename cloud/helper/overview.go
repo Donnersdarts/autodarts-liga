@@ -39,17 +39,19 @@ type OverviewPlayer struct {
 }
 
 type OverviewMatch struct {
-	MatchID    string           `json:"matchId"`
-	SeasonID   string           `json:"seasonId,omitempty"`
-	SeasonName string           `json:"seasonName,omitempty"`
-	SavedAt    string           `json:"savedAt"`
-	MatchDate  string           `json:"matchDate"`
-	Variant    string           `json:"variant"`
-	Winner     int              `json:"winner"`
-	Score      []int            `json:"score"`
-	Players    []OverviewPlayer `json:"players"`
-	Matchday   int              `json:"matchday"`
-	UsageMode  string           `json:"usageMode"`
+	MatchID     string           `json:"matchId"`
+	SeasonID    string           `json:"seasonId,omitempty"`
+	SeasonName  string           `json:"seasonName,omitempty"`
+	SavedAt     string           `json:"savedAt"`
+	MatchDate   string           `json:"matchDate"`
+	Variant     string           `json:"variant"`
+	Winner      int              `json:"winner"`
+	Score       []int            `json:"score"`
+	Players     []OverviewPlayer `json:"players"`
+	Matchday    int              `json:"matchday"`
+	UsageMode   string           `json:"usageMode"`
+	Walkover    bool             `json:"walkover,omitempty"`
+	FinalGameID string           `json:"finalGameId,omitempty"`
 }
 
 type PlayerOverview struct {
@@ -81,6 +83,7 @@ type PlayerOverview struct {
 
 type MatchOverview struct {
 	MatchID           string
+	Walkover          bool
 	Matchday          int
 	Date              time.Time
 	DateRaw           string
@@ -372,13 +375,14 @@ func (s *Server) knownLeagueNames() []string {
 func makeLeagueOverview(league, seasonID, seasonName string, isCurrent bool, raw []OverviewMatch) LeagueOverview {
 	ov := LeagueOverview{LeagueName: league, SeasonID: seasonID, SeasonName: seasonName, IsCurrent: isCurrent, Generated: time.Now()}
 	type acc struct {
-		P        PlayerOverview
-		aliasSet map[string]bool
-		avgSum   float64
+		P           PlayerOverview
+		aliasSet    map[string]bool
+		avgSum      float64
+		statMatches int
 	}
 	players := map[string]*acc{}
 	for _, m := range raw {
-		mo := MatchOverview{MatchID: m.MatchID, Matchday: m.Matchday, Date: parseAnyTime(m.MatchDate, m.SavedAt), DateRaw: m.MatchDate, Variant: m.Variant}
+		mo := MatchOverview{MatchID: m.MatchID, Walkover: m.Walkover, Matchday: m.Matchday, Date: parseAnyTime(m.MatchDate, m.SavedAt), DateRaw: m.MatchDate, Variant: m.Variant}
 		if m.Matchday >= 1 && m.Matchday <= 10 {
 			ov.DayCounts[m.Matchday-1]++
 		}
@@ -410,6 +414,13 @@ func makeLeagueOverview(league, seasonID, seasonName string, isCurrent bool, raw
 					a.P.LegsAgainst += v
 				}
 			}
+			// Kampflose Wertungen zählen nur für Spiel/Sieg/Niederlage. Sie dürfen
+			// keine Dartstatistik verfälschen und machen vorhandene Scoring-Werte
+			// nicht unvollständig.
+			if m.Walkover {
+				continue
+			}
+			a.statMatches++
 			if v, ok := metricFloat(p.Metrics, "average"); ok {
 				a.avgSum += v
 				a.P.AverageCount++
@@ -450,7 +461,7 @@ func makeLeagueOverview(league, seasonID, seasonName string, isCurrent bool, raw
 			_, has174 := metricFloat(p.Metrics, "scores174")
 			_, has177 := metricFloat(p.Metrics, "scores177")
 			_, has180 := metricFloat(p.Metrics, "oneEighties")
-			if a.P.Matches == 1 {
+			if a.statMatches == 1 {
 				a.P.ScoringComplete = true
 				a.P.ScoringKnown = scoringKnown(p.Metrics)
 			} else {
@@ -625,7 +636,11 @@ func (s *Server) generateOverviewForLeague(league string) {
 		ov := makeLeagueOverview(league, season.ID, season.Name, season.ID == reg.CurrentSeasonID, raw)
 		htmlPath := filepath.Join(dir, "season-"+safeOverviewPart(season.ID)+".html")
 		xlsxPath := filepath.Join(dir, "Liga-Übersicht_"+safeOverviewPart(season.Name)+".xlsx")
-		if err := writeHTMLOverview(htmlPath, ov, reg.Seasons, reg.CurrentSeasonID); err != nil {
+		finalState, finalErr := s.ensureFinalStateForOverview(ov)
+		if finalErr != nil {
+			log.Printf("Finalspieltag %s: %v", season.Name, finalErr)
+		}
+		if err := writeHTMLOverview(htmlPath, ov, reg.Seasons, reg.CurrentSeasonID, finalState); err != nil {
 			log.Printf("HTML-Übersicht %s: %v", season.Name, err)
 		}
 		if err := writeXLSXOverview(xlsxPath, ov); err != nil {
@@ -943,7 +958,7 @@ func writeSeasonHighlightsHTML(b *strings.Builder, ov LeagueOverview) {
 	b.WriteString(`</tbody></table></div>`)
 }
 
-func writeHTMLOverview(path string, ov LeagueOverview, seasons []SeasonInfo, currentSeasonID string) error {
+func writeHTMLOverview(path string, ov LeagueOverview, seasons []SeasonInfo, currentSeasonID string, finalState *FinalState) error {
 	var b strings.Builder
 	b.WriteString(`<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Autodarts Liga</title><style>`)
 	b.WriteString(`:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#07111f;color:#eef6ff;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}.wrap{max-width:1180px;margin:auto;padding:22px}.head{display:flex;justify-content:space-between;gap:18px;align-items:end;flex-wrap:wrap}.eyebrow{font-size:12px;letter-spacing:.16em;color:#77b9ff;font-weight:800}.head h1{margin:5px 0 4px;font-size:32px}.muted{color:#9cb0c5;font-size:13px}.cards{display:grid;grid-template-columns:repeat(4,minmax(140px,1fr));gap:12px;margin:22px 0}.card,.panel{background:#111d2b;border:1px solid #24384c;border-radius:14px}.card{padding:16px}.card strong{display:block;font-size:26px}.card span{font-size:12px;color:#9cb0c5}.panel{padding:18px;margin:14px 0;overflow:auto}h2{font-size:18px;margin:0 0 14px}table{width:100%;border-collapse:collapse;min-width:760px}th,td{border-bottom:1px solid #24384c;padding:10px 9px;text-align:center;font-variant-numeric:tabular-nums}th{font-size:11px;color:#8ec4ff;text-transform:uppercase;letter-spacing:.08em}td:first-child,th:first-child{text-align:left}.pos{color:#59e391}.neg{color:#ff7b83}.days{display:grid;grid-template-columns:repeat(10,minmax(70px,1fr));gap:8px}.day{padding:10px;border:1px solid #24384c;border-radius:10px;text-align:center}.day.has{border-color:#2b8d68;background:#102b27}.day b{display:block;font-size:20px}.matches{display:grid;gap:8px}.matchday-heading{margin-top:12px;padding:10px 12px;border:1px solid #2d5d86;border-radius:10px;background:#0d2338;display:flex;align-items:center;justify-content:space-between;gap:12px;color:#9bcfff}.matchday-heading:first-child{margin-top:0}.matchday-heading div{display:flex;align-items:baseline;gap:8px}.matchday-heading strong{font-size:20px;color:#eef6ff}.matchday-heading>span{font-size:12px;color:#9cb0c5}.matchday-kicker{font-size:10px;letter-spacing:.14em;font-weight:900;color:#5eafff}.match{display:grid;grid-template-columns:75px 150px 1fr 70px 1fr 95px;gap:8px;align-items:center;padding:10px 8px;border-bottom:1px solid #24384c}.score{font-weight:900;font-size:18px;text-align:center}.tag{font-size:11px;color:#8ec4ff}.winner{color:#59e391;font-weight:800}.match-detail{border:1px solid #24384c;border-radius:12px;overflow:hidden;background:#0d1826}.match-detail+ .match-detail{margin-top:8px}.match-detail summary{list-style:none;cursor:pointer}.match-detail summary::-webkit-details-marker{display:none}.match-detail[open]{border-color:#356b98}.match-detail[open] summary{background:#12263a}.stats-toggle{color:#8ec4ff;font-size:12px;font-weight:800;text-align:right}.detail{padding:12px;border-top:1px solid #24384c}.detail-head{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}.detail-player{padding:10px;border:1px solid #24384c;border-radius:10px}.detail-player b{display:block;font-size:15px}.detail-player span{font-size:11px;color:#9cb0c5}.stat-table{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:#24384c;border:1px solid #24384c;border-radius:10px;overflow:hidden}.stat-row{display:contents}.stat-cell{background:#101b28;padding:9px 8px;text-align:center;font-variant-numeric:tabular-nums}.stat-label{color:#8ec4ff;font-size:11px;font-weight:800}.stat-value{font-weight:800}.autodarts-link{display:inline-block;margin-top:10px;color:#8ec4ff;text-decoration:none;font-size:12px;font-weight:800}.highlights{margin-top:12px;padding:12px;border:1px solid #31506b;border-radius:10px;background:#0b1623}.highlights-title{font-size:12px;font-weight:900;letter-spacing:.08em;color:#ffd166;text-transform:uppercase;margin-bottom:9px}.highlight-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.highlight-player{padding:9px;border:1px solid #24384c;border-radius:9px;background:#101b28}.highlight-player-name{font-size:12px;font-weight:800;margin-bottom:7px}.highlight-line{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:5px 0}.highlight-kind{font-size:10px;color:#9cb0c5;min-width:84px}.highlight-pill{display:inline-block;border:1px solid #375775;background:#15273a;border-radius:999px;padding:4px 7px;font-size:11px;font-weight:800}.highlight-pill.score{border-color:#7d5b1f;background:#2a2210;color:#ffd166}.highlight-pill.finish{border-color:#7d355d;background:#2b1424;color:#ff9bd0}.highlight-pill.short{border-color:#2b7758;background:#102a21;color:#6de5ac}.season-note{margin:-6px 0 12px}.season-table{min-width:900px}.season-table td{vertical-align:top}.season-table td:first-child{white-space:nowrap}.season-count{font-size:11px;font-weight:900;color:#8ec4ff;margin-bottom:6px}.season-pills{display:flex;flex-wrap:wrap;justify-content:center;gap:5px}.season-pill{display:inline-block;border:1px solid #375775;background:#15273a;border-radius:999px;padding:4px 7px;font-size:10px;font-weight:800;white-space:nowrap}.season-pill.score{border-color:#7d5b1f;background:#2a2210;color:#ffd166}.season-pill.finish{border-color:#7d355d;background:#2b1424;color:#ff9bd0}.season-pill.short{border-color:#2b7758;background:#102a21;color:#6de5ac}.season-none{color:#60778d}.season-nav{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:12px}.season-nav label{font-size:11px;color:#9cb0c5;font-weight:800}.season-nav select{background:#111d2b;color:#eef6ff;border:1px solid #356b98;border-radius:9px;padding:8px 10px;font-weight:800}.season-status{font-size:11px;color:#59e391;font-weight:800}.season-status.archived{color:#ffd166}@media(max-width:760px){.cards{grid-template-columns:repeat(2,1fr)}.days{grid-template-columns:repeat(5,1fr)}.match{grid-template-columns:55px 1fr 54px 1fr}.match .date,.match .winnerLabel{display:none}.wrap{padding:14px}.stats-toggle{display:none}.detail{padding:10px}.stat-table{font-size:12px}.stat-cell{padding:8px 4px}.highlight-grid{grid-template-columns:1fr}.highlight-kind{min-width:76px}}`)
@@ -1001,6 +1016,7 @@ func writeHTMLOverview(path string, ov LeagueOverview, seasons []SeasonInfo, cur
 	}
 	b.WriteString(`</tbody></table><div class="muted" style="margin-top:9px">Scoring exklusiv: 95+ = 95–113 · 114+ = 114–132 · 133+ = 133–170 · 171 / 174 / 177 / 180 jeweils exakt. „≥ Zahl*“ = bisher nachweisbarer Mindestwert; mindestens ein Match hat unvollständige Scoring-Daten. Dieser Wert ist KEIN vollständiger Saisonwert. Betroffene Spiele im GitHub-Actions-Protokoll ermitteln und erneut mit vollständiger Wurfhistorie auswerten.</div></div>`)
 	writeSeasonHighlightsHTML(&b, ov)
+	writeFinalSectionHTML(&b, finalState)
 	b.WriteString(`<div class="panel"><h2>Ergebnisse</h2><div class="matches">`)
 	matches := append([]MatchOverview(nil), ov.Matches...)
 	sort.SliceStable(matches, func(i, j int) bool {
@@ -1063,7 +1079,15 @@ func writeHTMLOverview(path string, ov LeagueOverview, seasons []SeasonInfo, cur
 			return "–"
 		}
 		matchURL := "https://play.autodarts.com/history/matches/" + m.MatchID
-		fmt.Fprintf(&b, `<details class="match-detail"><summary><div class="match"><div class="tag">ST %d</div><div class="date muted">%s</div><div>%s</div><div class="score">%d : %d</div><div>%s</div><div class="winnerLabel"><span class="muted">Sieger </span><span class="winner">%s</span><div class="stats-toggle">Statistik ▾</div></div></div></summary>`, m.Matchday, htmlE(formatDateDE(m.Date)), htmlE(m.Player1), m.Score1, m.Score2, htmlE(m.Player2), htmlE(winner))
+		scoreSummary := fmt.Sprintf("%d : %d", m.Score1, m.Score2)
+		dateSummary := formatDateDE(m.Date)
+		statsLabel := "Statistik ▾"
+		if m.Walkover {
+			scoreSummary = "WO"
+			dateSummary = "kampflos"
+			statsLabel = "keine Dartstatistik"
+		}
+		fmt.Fprintf(&b, `<details class="match-detail"><summary><div class="match"><div class="tag">ST %d</div><div class="date muted">%s</div><div>%s</div><div class="score">%s</div><div>%s</div><div class="winnerLabel"><span class="muted">Sieger </span><span class="winner">%s</span><div class="stats-toggle">%s</div></div></div></summary>`, m.Matchday, htmlE(dateSummary), htmlE(m.Player1), htmlE(scoreSummary), htmlE(m.Player2), htmlE(winner), htmlE(statsLabel))
 		fmt.Fprintf(&b, `<div class="detail"><div class="detail-head"><div class="detail-player"><b>%s</b><span>%s</span></div><div class="detail-player"><b>%s</b><span>%s</span></div></div>`, htmlE(m.Player1), htmlE(m.Alias1), htmlE(m.Player2), htmlE(m.Alias2))
 		scoreText := func(ok bool, v int) string {
 			if !ok {

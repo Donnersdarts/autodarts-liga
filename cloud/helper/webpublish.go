@@ -135,7 +135,7 @@ func githubRequest(cfg WebPublishConfig, method, endpoint string, body []byte) (
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Authorization", "Bearer "+cfg.Token)
 	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
-	req.Header.Set("User-Agent", "Autodarts-Liga-Sync-Helper/0.9.3")
+	req.Header.Set("User-Agent", "Autodarts-Liga-Sync-Helper/0.9.6")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
