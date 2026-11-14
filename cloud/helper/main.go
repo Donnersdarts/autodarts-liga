@@ -18,7 +18,7 @@ import (
 
 const (
 	appName       = "Autodarts Liga Sync Helper"
-	appVersion    = "0.9.7.3"
+	appVersion    = "0.9.8"
 	listenAddress = "127.0.0.1:17653"
 )
 

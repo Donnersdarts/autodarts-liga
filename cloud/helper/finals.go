@@ -243,6 +243,8 @@ func initialFinalFixtures(table []FrozenStanding) []FinalFixture {
 		fixtures[1].Player1, fixtures[1].Player2 = table[0].Name, table[3].Name
 		fixtures[2].Player1, fixtures[2].Player2 = table[1].Name, table[2].Name
 		fixtures[0].Status = "ready"
+		fixtures[1].Status = "ready"
+		fixtures[2].Status = "ready"
 	}
 	return fixtures
 }
@@ -345,28 +347,24 @@ func updateFinalAvailability(st *FinalState) {
 			st.Fixtures[i].Status = "locked"
 		}
 	}
-	// Strict requested order: 5/6 -> HF1 -> HF2 -> Platz 3 -> Finale.
-	if st.Fixtures[0].Status != "completed" {
-		st.Fixtures[0].Status = "ready"
-		return
+	// Dependency logic instead of a forced chronological order:
+	// place 5/6 and both semifinals can be played independently as soon as
+	// the regular season is frozen.
+	for _, idx := range []int{0, 1, 2} {
+		if st.Fixtures[idx].Status != "completed" {
+			st.Fixtures[idx].Status = "ready"
+		}
 	}
-	if st.Fixtures[1].Status != "completed" {
-		st.Fixtures[1].Status = "ready"
-		return
-	}
-	if st.Fixtures[2].Status != "completed" {
-		st.Fixtures[2].Status = "ready"
-		return
-	}
-	st.Fixtures[3].Player1, st.Fixtures[3].Player2 = st.Fixtures[1].Loser, st.Fixtures[2].Loser
-	st.Fixtures[4].Player1, st.Fixtures[4].Player2 = st.Fixtures[1].Winner, st.Fixtures[2].Winner
-	if st.Fixtures[3].Status != "completed" {
-		st.Fixtures[3].Status = "ready"
-		return
-	}
-	if st.Fixtures[4].Status != "completed" {
-		st.Fixtures[4].Status = "ready"
-		return
+	// Third-place match and final depend only on BOTH semifinals. They do not
+	// depend on place 5/6 and may be played in either order once both semis end.
+	if finalFixtureComplete(st.Fixtures[1]) && finalFixtureComplete(st.Fixtures[2]) {
+		st.Fixtures[3].Player1, st.Fixtures[3].Player2 = st.Fixtures[1].Loser, st.Fixtures[2].Loser
+		st.Fixtures[4].Player1, st.Fixtures[4].Player2 = st.Fixtures[1].Winner, st.Fixtures[2].Winner
+		for _, idx := range []int{3, 4} {
+			if st.Fixtures[idx].Status != "completed" {
+				st.Fixtures[idx].Status = "ready"
+			}
+		}
 	}
 }
 
@@ -538,7 +536,8 @@ func (s *Server) reconcileFinalState(st *FinalState) error {
 	if st == nil {
 		return errors.New("Finalstatus fehlt")
 	}
-	// Rebuild the derived bracket from durable final-match files.
+	// Rebuild the derived bracket from durable final-match files. The first
+	// tier is independent; the second tier only depends on both semifinals.
 	base := initialFinalFixtures(st.FrozenTable)
 	for i := range base {
 		st.Fixtures[i].Player1 = base[i].Player1
@@ -548,44 +547,65 @@ func (s *Server) reconcileFinalState(st *FinalState) error {
 	}
 	files := s.readFinalMatchFiles(st.SeasonID)
 	updateFinalAvailability(st)
-	for order := 1; order <= 5; order++ {
-		f := &st.Fixtures[order-1]
-		if f.Status != "ready" {
-			updateFinalAvailability(st)
-			f = &st.Fixtures[order-1]
+
+	// Independent games available immediately after the regular-season freeze.
+	for _, id := range []string{"place56", "semi1", "semi2"} {
+		f := fixtureByID(st, id)
+		if f == nil || f.Status != "ready" {
+			continue
 		}
-		fm, ok := files[f.ID]
-		if !ok {
-			break
+		if fm, ok := files[id]; ok {
+			_ = applyFinalFile(st, f, fm)
 		}
-		if !applyFinalFile(st, f, fm) {
-			break
-		}
-		updateFinalAvailability(st)
 	}
+	updateFinalAvailability(st)
+
+	// Once both semifinals are complete, third place and final are both
+	// independently playable. A missing third-place match must not block final.
+	for _, id := range []string{"third", "final"} {
+		f := fixtureByID(st, id)
+		if f == nil || f.Status != "ready" {
+			continue
+		}
+		if fm, ok := files[id]; ok {
+			_ = applyFinalFile(st, f, fm)
+		}
+	}
+	updateFinalAvailability(st)
+
 	completed := 0
 	for _, f := range st.Fixtures {
 		if finalFixtureComplete(f) {
 			completed++
 		}
 	}
+	// The final winner can already be shown while another independent final-day
+	// fixture (e.g. place 5/6) is still open. The season itself closes only at 5/5.
+	if finalFixtureComplete(st.Fixtures[4]) {
+		st.Champion = st.Fixtures[4].Winner
+	} else {
+		st.Champion = ""
+	}
 	switch {
 	case completed == 5:
 		st.Status = "completed"
-		st.Champion = st.Fixtures[4].Winner
-		if st.CompletedAt == "" {
-			st.CompletedAt = st.Fixtures[4].CompletedAt
-			if st.CompletedAt == "" {
-				st.CompletedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		latest := time.Time{}
+		for _, f := range st.Fixtures {
+			t := parseAnyTime(f.CompletedAt)
+			if t.After(latest) {
+				latest = t
 			}
+		}
+		if !latest.IsZero() {
+			st.CompletedAt = latest.UTC().Format(time.RFC3339Nano)
+		} else if st.CompletedAt == "" {
+			st.CompletedAt = time.Now().UTC().Format(time.RFC3339Nano)
 		}
 	case completed > 0:
 		st.Status = "running"
-		st.Champion = ""
 		st.CompletedAt = ""
 	default:
 		st.Status = "ready"
-		st.Champion = ""
 		st.CompletedAt = ""
 	}
 	st.FinalStats, st.FinalStatsGames = s.finalStatsForState(st, files)
@@ -725,7 +745,7 @@ func (s *Server) writeFinalMatchFile(st *FinalState, season SeasonInfo, gameID s
 		return "", errors.New("unbekanntes Finalspiel")
 	}
 	if f.Status != "ready" {
-		return "", fmt.Errorf("%s ist noch nicht als nächstes Spiel freigegeben", f.Label)
+		return "", fmt.Errorf("%s ist aktuell nicht spielbar", f.Label)
 	}
 	var m OverviewMatch
 	if err := json.Unmarshal(raw, &m); err != nil {
@@ -944,7 +964,7 @@ func (s *Server) handleWalkover(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !samePair([]string{p1, p2}, fixtureExpectedPlayers(f)) {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "Spieler passen nicht zum aktuell freigegebenen Finalspiel"})
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "Spieler passen nicht zum ausgewählten Finalspiel"})
 			return
 		}
 		raw := walkoverRaw(season, "final", f.ID, 0, f.Player1, f.Player2, winner)
@@ -1019,7 +1039,17 @@ func writeFinalSectionHTML(b *strings.Builder, st *FinalState) {
 		b.WriteString(`<span class="frozen-badge">Ligatabelle eingefroren</span>`)
 	}
 	b.WriteString(`</h2>`)
-	fmt.Fprintf(b, `<div class="final-progress"><span>%d/%d Ligaspiele</span><span>%d/%d vollständige Spieltage</span><span>%d/%d Paarungen vollständig</span></div>`, st.Progress.CompletedMatches, st.Progress.ExpectedMatches, st.Progress.MatchdaysComplete, expectedMatchdays, st.Progress.PairingsComplete, st.Progress.PairingsExpected)
+	completedFinals := 0
+	for _, f := range st.Fixtures {
+		if finalFixtureComplete(f) {
+			completedFinals++
+		}
+	}
+	fmt.Fprintf(b, `<div class="final-progress"><span>%d/%d Ligaspiele</span><span>%d/%d vollständige Spieltage</span><span>%d/%d Paarungen vollständig</span>`, st.Progress.CompletedMatches, st.Progress.ExpectedMatches, st.Progress.MatchdaysComplete, expectedMatchdays, st.Progress.PairingsComplete, st.Progress.PairingsExpected)
+	if st.Available {
+		fmt.Fprintf(b, `<span>%d/5 Finalspiele</span>`, completedFinals)
+	}
+	b.WriteString(`</div>`)
 	if !st.Available {
 		b.WriteString(`<div class="muted">Noch gesperrt: ` + htmlE(st.Progress.Reason) + `. Die Finalrunde wird automatisch erzeugt, sobald die reguläre Saison vollständig ist.</div>`)
 		b.WriteString(`<div class="final-sequence"><span><b>1</b> Platz 5/6</span><span><b>2</b> Halbfinale 1</span><span><b>3</b> Halbfinale 2</span><span><b>4</b> Platz 3</span><span><b>5</b> Finale</span></div>`)
@@ -1038,9 +1068,16 @@ func writeFinalSectionHTML(b *strings.Builder, st *FinalState) {
 		b.WriteString(`</div></div></div>`)
 		return
 	}
-	if st.Status == "completed" && st.Champion != "" {
-		b.WriteString(`<div class="champion"><div class="cup">🏆</div><span class="muted">LIGAMEISTER · ` + htmlE(st.SeasonName) + `</span><strong>` + htmlE(st.Champion) + `</strong></div>`)
+	if st.Champion != "" {
+		title := "FINALSIEGER"
+		note := " · Saisonabschluss wartet auf die übrigen Finalspiele"
+		if st.Status == "completed" {
+			title = "LIGAMEISTER"
+			note = ""
+		}
+		b.WriteString(`<div class="champion"><div class="cup">🏆</div><span class="muted">` + htmlE(title) + ` · ` + htmlE(st.SeasonName) + htmlE(note) + `</span><strong>` + htmlE(st.Champion) + `</strong></div>`)
 	}
+	b.WriteString(`<div class="muted" style="margin:8px 0 12px">Flexible Reihenfolge: Platz 5/6 und beide Halbfinals sind unabhängig spielbar. Nach Abschluss beider Halbfinals werden Platz 3 und Finale gleichzeitig freigegeben.</div>`)
 	renderGame := func(f FinalFixture) {
 		score := "–"
 		if f.Walkover {
@@ -1057,7 +1094,7 @@ func writeFinalSectionHTML(b *strings.Builder, st *FinalState) {
 		}
 		fmt.Fprintf(b, `<div class="final-game %s"><span class="ord">SPIEL %d</span><h3>%s</h3><div class="final-players"><span class="%s">%s</span><span class="final-score">%s</span><span class="%s">%s</span></div>`, htmlE(f.Status), f.Order, htmlE(f.Label), map[bool]string{true: "final-winner", false: ""}[namesMatch(f.Winner, f.Player1)], htmlE(p1), htmlE(score), map[bool]string{true: "final-winner", false: ""}[namesMatch(f.Winner, f.Player2)], htmlE(p2))
 		if f.Status == "ready" {
-			b.WriteString(`<div class="muted" style="margin-top:8px">Als nächstes zu spielen</div>`)
+			b.WriteString(`<div class="muted" style="margin-top:8px">Spielbar · Reihenfolge frei wählbar</div>`)
 		} else if f.Walkover {
 			b.WriteString(`<div class="muted" style="margin-top:8px">kampflos gewertet · keine Dartstatistik erzeugt</div>`)
 		}

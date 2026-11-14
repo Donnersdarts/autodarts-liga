@@ -61,7 +61,7 @@ DATA_SHA="${DATA_FINGERPRINT%% *}"
 DATA_FILES="${DATA_FINGERPRINT##* }"
 MATCH_FILES="$(find "$WORK/app/Liga-Daten/Matches" -maxdepth 1 -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ')"
 
-echo '3/5 Cloud-Helper 0.9.7.3 wird gebaut ...'
+echo '3/5 Cloud-Helper 0.9.8 wird gebaut ...'
 (cd "$ROOT/cloud/helper" && GO111MODULE=off go test ./... && GO111MODULE=off go build -o "$WORK/AutodartsLigaSyncHelper" .)
 
 python3 - "$WORK/usercfg/AutodartsLigaSync/config.json" "$WORK/app/Liga-Daten" <<'PY'
@@ -133,7 +133,7 @@ import datetime, json, os, pathlib, sys
 out = pathlib.Path(sys.argv[1])
 data = {
     'format': 'autodarts-liga-cloud-build',
-    'version': '0.9.7.3',
+    'version': '0.9.8',
     'generatedAtUtc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
     'githubSha': os.environ.get('GITHUB_SHA',''),
     'oneDriveDataSha256': sys.argv[2],

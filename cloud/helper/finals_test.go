@@ -46,43 +46,52 @@ func TestRegularProgressRequiresExactSixPlayerDoubleRoundRobin(t *testing.T) {
 	}
 }
 
-func TestFinalStrictOrderAndPairings(t *testing.T) {
+func TestFinalDependencyOrderAllowsPostponements(t *testing.T) {
 	ov := completeTestOverview()
 	table := frozenTableFromOverview(ov)
 	st := FinalState{FrozenTable: table, Fixtures: initialFinalFixtures(table)}
-	if st.Fixtures[0].Status != "ready" || st.Fixtures[1].Status != "locked" {
-		t.Fatalf("wrong initial order: %#v", st.Fixtures)
+	for _, idx := range []int{0, 1, 2} {
+		if st.Fixtures[idx].Status != "ready" {
+			t.Fatalf("fixture %s must be initially playable: %#v", st.Fixtures[idx].ID, st.Fixtures[idx])
+		}
 	}
-	st.Fixtures[0].Status = "completed"
-	st.Fixtures[0].Winner = "E"
-	st.Fixtures[0].Loser = "F"
-	updateFinalAvailability(&st)
-	if st.Fixtures[1].Status != "ready" || st.Fixtures[2].Status != "locked" {
-		t.Fatal("semi1 must follow place 5/6")
+	if st.Fixtures[3].Status != "locked" || st.Fixtures[4].Status != "locked" {
+		t.Fatal("third-place game and final must wait for both semifinals")
 	}
-	st.Fixtures[1].Status = "completed"
-	st.Fixtures[1].Winner = "A"
-	st.Fixtures[1].Loser = "D"
-	updateFinalAvailability(&st)
-	if st.Fixtures[2].Status != "ready" {
-		t.Fatal("semi2 must follow semi1")
-	}
+
+	// Semi 2 may be played before semi 1; place 5/6 may remain postponed.
 	st.Fixtures[2].Status = "completed"
 	st.Fixtures[2].Winner = "B"
 	st.Fixtures[2].Loser = "C"
 	updateFinalAvailability(&st)
-	if st.Fixtures[3].Status != "ready" || st.Fixtures[3].Player1 != "D" || st.Fixtures[3].Player2 != "C" {
-		t.Fatalf("third-place game wrong: %#v", st.Fixtures[3])
+	if st.Fixtures[0].Status != "ready" || st.Fixtures[1].Status != "ready" {
+		t.Fatal("place 5/6 and semi1 must remain independently playable")
 	}
-	if st.Fixtures[4].Player1 != "A" || st.Fixtures[4].Player2 != "B" || st.Fixtures[4].Status != "locked" {
-		t.Fatalf("final pairing/order wrong: %#v", st.Fixtures[4])
+	if st.Fixtures[3].Status != "locked" || st.Fixtures[4].Status != "locked" {
+		t.Fatal("one semifinal is not enough to unlock dependent games")
 	}
-	st.Fixtures[3].Status = "completed"
-	st.Fixtures[3].Winner = "C"
-	st.Fixtures[3].Loser = "D"
+
+	st.Fixtures[1].Status = "completed"
+	st.Fixtures[1].Winner = "A"
+	st.Fixtures[1].Loser = "D"
 	updateFinalAvailability(&st)
-	if st.Fixtures[4].Status != "ready" {
-		t.Fatal("final must unlock only after third-place game")
+	if st.Fixtures[3].Status != "ready" || st.Fixtures[4].Status != "ready" {
+		t.Fatalf("third and final must both unlock after both semis: third=%#v final=%#v", st.Fixtures[3], st.Fixtures[4])
+	}
+	if st.Fixtures[3].Player1 != "D" || st.Fixtures[3].Player2 != "C" {
+		t.Fatalf("third-place pairing wrong: %#v", st.Fixtures[3])
+	}
+	if st.Fixtures[4].Player1 != "A" || st.Fixtures[4].Player2 != "B" {
+		t.Fatalf("final pairing wrong: %#v", st.Fixtures[4])
+	}
+
+	// Final may be played before third place and before place 5/6.
+	st.Fixtures[4].Status = "completed"
+	st.Fixtures[4].Winner = "A"
+	st.Fixtures[4].Loser = "B"
+	updateFinalAvailability(&st)
+	if st.Fixtures[0].Status != "ready" || st.Fixtures[3].Status != "ready" {
+		t.Fatal("postponed independent games must stay playable after the final")
 	}
 }
 
@@ -192,5 +201,99 @@ func TestLockedFinalRendersGraphicalBracket(t *testing.T) {
 	}
 	if strings.Contains(h, `class="final-order"`) {
 		t.Fatal("locked final must render graphical bracket, not the old vertical list")
+	}
+}
+
+func makeFinalTestRaw(p1, p2 string, winner int) json.RawMessage {
+	m := OverviewMatch{
+		MatchID: newUUID(), Winner: winner, Score: []int{3, 1}, UsageMode: "final",
+		Players: []OverviewPlayer{{Name: p1, AutodartsName: p1}, {Name: p2, AutodartsName: p2}},
+	}
+	b, _ := json.Marshal(m)
+	return b
+}
+
+func TestFinalFileFlowAllowsFlexibleOrderAndClosesOnlyAtFiveOfFive(t *testing.T) {
+	table := []FrozenStanding{{Rank: 1, Name: "A"}, {Rank: 2, Name: "B"}, {Rank: 3, Name: "C"}, {Rank: 4, Name: "D"}, {Rank: 5, Name: "E"}, {Rank: 6, Name: "F"}}
+	srv := &Server{config: Config{BasePath: t.TempDir()}}
+	season := SeasonInfo{ID: "s", Name: "S"}
+	st := &FinalState{LeagueName: "Test", SeasonID: "s", SeasonName: "S", Status: "ready", Available: true, RegularLocked: true, FrozenTable: table, Fixtures: initialFinalFixtures(table)}
+	if err := srv.saveFinalState(st); err != nil {
+		t.Fatal(err)
+	}
+
+	// Semi 2 first.
+	if _, err := srv.writeFinalMatchFile(st, season, "semi2", makeFinalTestRaw("B", "C", 0), false); err != nil {
+		t.Fatalf("semi2 first failed: %v", err)
+	}
+	if fixtureByID(st, "semi1").Status != "ready" || fixtureByID(st, "place56").Status != "ready" {
+		t.Fatal("semi1/place56 must remain playable after semi2")
+	}
+	if fixtureByID(st, "final").Status != "locked" {
+		t.Fatal("final must still wait for semi1")
+	}
+
+	// Semi 1 next; third and final both unlock.
+	if _, err := srv.writeFinalMatchFile(st, season, "semi1", makeFinalTestRaw("A", "D", 0), false); err != nil {
+		t.Fatalf("semi1 failed: %v", err)
+	}
+	if fixtureByID(st, "third").Status != "ready" || fixtureByID(st, "final").Status != "ready" {
+		t.Fatal("third and final must both be playable after both semis")
+	}
+
+	// Final before third and before place 5/6.
+	if _, err := srv.writeFinalMatchFile(st, season, "final", makeFinalTestRaw("A", "B", 0), false); err != nil {
+		t.Fatalf("final before third/place56 failed: %v", err)
+	}
+	if st.Champion != "A" || st.Status != "running" {
+		t.Fatalf("final winner should be visible but season still running: status=%s champion=%s", st.Status, st.Champion)
+	}
+	if fixtureByID(st, "third").Status != "ready" || fixtureByID(st, "place56").Status != "ready" {
+		t.Fatal("remaining independent games must stay playable")
+	}
+
+	if _, err := srv.writeFinalMatchFile(st, season, "third", makeFinalTestRaw("D", "C", 1), false); err != nil {
+		t.Fatalf("third failed: %v", err)
+	}
+	if st.Status != "running" {
+		t.Fatalf("season must stay running until place56 is done, got %s", st.Status)
+	}
+	if _, err := srv.writeFinalMatchFile(st, season, "place56", makeFinalTestRaw("E", "F", 1), false); err != nil {
+		t.Fatalf("place56 last failed: %v", err)
+	}
+	if st.Status != "completed" || st.Champion != "A" || st.CompletedAt == "" {
+		t.Fatalf("season did not close at 5/5: %#v", st)
+	}
+	got := finalPlacements(st)
+	want := []string{"A", "B", "C", "D", "F", "E"}
+	for i := range want {
+		if i >= len(got) || got[i] != want[i] {
+			t.Fatalf("placement %d got=%v want=%v", i+1, got, want)
+		}
+	}
+}
+
+func TestFinalHTMLShowsPartialChampionAndMultiplePlayableGames(t *testing.T) {
+	st := &FinalState{
+		Available: true, RegularLocked: true, Status: "running", Champion: "A", SeasonName: "Saison Test",
+		Progress: LeagueProgress{CompletedMatches: 30, ExpectedMatches: 30, MatchdaysComplete: 10, PairingsComplete: 15, PairingsExpected: 15},
+		Fixtures: []FinalFixture{
+			{ID: "place56", Order: 1, Label: "Spiel um Platz 5/6", Player1: "E", Player2: "F", Status: "ready"},
+			{ID: "semi1", Order: 2, Label: "Halbfinale 1", Player1: "A", Player2: "D", Status: "completed", Winner: "A", Loser: "D", Score: []int{3, 1}},
+			{ID: "semi2", Order: 3, Label: "Halbfinale 2", Player1: "B", Player2: "C", Status: "completed", Winner: "B", Loser: "C", Score: []int{3, 2}},
+			{ID: "third", Order: 4, Label: "Spiel um Platz 3", Player1: "D", Player2: "C", Status: "ready"},
+			{ID: "final", Order: 5, Label: "Finale", Player1: "A", Player2: "B", Status: "completed", Winner: "A", Loser: "B", Score: []int{3, 1}},
+		},
+	}
+	var b strings.Builder
+	writeFinalSectionHTML(&b, st)
+	html := b.String()
+	for _, want := range []string{"FINALSIEGER", "Saisonabschluss wartet", "3/5 Finalspiele", "Spielbar · Reihenfolge frei wählbar", "Flexible Reihenfolge"} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("HTML missing %q", want)
+		}
+	}
+	if strings.Contains(html, "LIGAMEISTER") {
+		t.Fatal("running season must not be labelled LIGAMEISTER")
 	}
 }
