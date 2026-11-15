@@ -11,7 +11,7 @@ func fp(v float64) *float64 { return &v }
 
 func TestLeagueHistoryBuildsCareerHeadToHeadAndRecords(t *testing.T) {
 	ov1 := LeagueOverview{LeagueName: "Liga", SeasonID: "s1", SeasonName: "Saison 1", Players: []PlayerOverview{
-		{Name: "A", Matches: 2, Wins: 2, LegsFor: 8, LegsAgainst: 4, LegDiff: 4, Average: 60, AverageCount: 2, CheckoutHits: 8, CheckoutAttempts: 20, OneEighties: 2, HighFinish: 120},
+		{Name: "A", Matches: 2, Wins: 2, LegsFor: 8, LegsAgainst: 4, LegDiff: 4, Average: 60, AverageCount: 2, CheckoutHits: 8, CheckoutAttempts: 20, Scores171: 3, OneEighties: 2, HighFinish: 120},
 		{Name: "B", Matches: 2, Losses: 2, LegsFor: 4, LegsAgainst: 8, LegDiff: -4, Average: 55, AverageCount: 2, CheckoutHits: 4, CheckoutAttempts: 15, OneEighties: 1, HighFinish: 100},
 	}, Matches: []MatchOverview{
 		{MatchID: "m1", Matchday: 1, Player1: "A", Player2: "B", Score1: 4, Score2: 3, Winner: "A", Avg1: fp(61), Avg2: fp(56), OneEighties1: 2, HF1: 120},
@@ -26,7 +26,7 @@ func TestLeagueHistoryBuildsCareerHeadToHeadAndRecords(t *testing.T) {
 	if !ok {
 		t.Fatal("A missing")
 	}
-	if a.Titles != 1 || a.Wins != 2 || a.OneEighties != 2 {
+	if a.Titles != 1 || a.Wins != 2 || a.Scores171 != 3 || a.OneEighties != 2 {
 		t.Fatalf("bad career: %+v", a)
 	}
 	if len(h.H2HMatches) != 2 {
@@ -94,7 +94,7 @@ func TestOverviewRendersAnalyticsAndSummaryLink(t *testing.T) {
 	path := filepath.Join(dir, "index.html")
 	ov := LeagueOverview{LeagueName: "Liga", SeasonID: "s1", SeasonName: "Saison 1", IsCurrent: true, Players: []PlayerOverview{{Name: "A"}, {Name: "B"}}}
 	st := &FinalState{SeasonID: "s1", SeasonName: "Saison 1", Status: "completed", Champion: "A", Progress: LeagueProgress{Complete: true}, Fixtures: []FinalFixture{{Winner: "E", Loser: "F", Status: "completed"}, {Winner: "A", Loser: "D", Status: "completed"}, {Winner: "B", Loser: "C", Status: "completed"}, {Winner: "C", Loser: "D", Status: "completed"}, {Winner: "A", Loser: "B", Status: "completed"}}}
-	h := LeagueHistory{Players: []CareerPlayer{{Name: "A", Titles: 1, Elo: 1510}, {Name: "B", Elo: 1490}}, Records: []LeagueRecord{{Title: "Testrekord", Value: "1", Player: "A"}}, Form: []FormPlayer{{Name: "A", Results: []string{"W"}, Wins: 1}}}
+	h := LeagueHistory{Players: []CareerPlayer{{Name: "A", Titles: 1, Elo: 1510, Scores171: 3, OneEighties: 2}, {Name: "B", Elo: 1490}}, Records: []LeagueRecord{{Title: "Testrekord", Value: "1", Player: "A"}}, Form: []FormPlayer{{Name: "A", Results: []string{"W"}, Wins: 1}}}
 	if err := writeHTMLOverview(path, ov, []SeasonInfo{{ID: "s1", Name: "Saison 1"}}, "s1", st, OverviewExtras{History: h}); err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestOverviewRendersAnalyticsAndSummaryLink(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(raw)
-	for _, want := range []string{"Hall of Fame", "Head-to-Head", "Rekordbuch", "Spielerprofile", "Form-Ranking", "abschluss-s1.html", "data-tab=\"spielplan\"", "data-tab=\"statistiken\"", "data-tab=\"historie\"", "data-tab=\"finale\"", "LIGA_SPIELPLAN_SLOT"} {
+	for _, want := range []string{"Hall of Fame", "Head-to-Head", "Rekordbuch", "Spielerprofile", "Form-Ranking", "abschluss-s1.html", "data-tab=\"spielplan\"", "data-tab=\"statistiken\"", "data-tab=\"historie\"", "data-tab=\"finale\"", "LIGA_SPIELPLAN_SLOT", "171er", ">3</b><span>171er</span>", ">2</b><span>180er</span>"} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("missing %q", want)
 		}

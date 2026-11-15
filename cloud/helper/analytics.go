@@ -40,6 +40,7 @@ type CareerPlayer struct {
 	CheckoutPct      float64
 	CheckoutHits     int
 	CheckoutAttempts int
+	Scores171        int
 	OneEighties      int
 	HighFinish       int
 	Elo              float64
@@ -245,6 +246,7 @@ func buildLeagueHistory(reg SeasonRegistry, overviews map[string]LeagueOverview,
 			a.p.LegsAgainst += p.LegsAgainst
 			a.p.CheckoutHits += p.CheckoutHits
 			a.p.CheckoutAttempts += p.CheckoutAttempts
+			a.p.Scores171 += p.Scores171
 			a.p.OneEighties += p.OneEighties
 			if p.HighFinish > a.p.HighFinish {
 				a.p.HighFinish = p.HighFinish
@@ -785,7 +787,7 @@ func writeProfilesHTML(b *strings.Builder, history LeagueHistory, current League
 	b.WriteString(`<div class="profile-grid">`)
 	for _, p := range history.Players {
 		cur, _ := playerByName(current, p.Name)
-		fmt.Fprintf(b, `<details class="profile"><summary>%s · Elo %.0f</summary><div class="profile-body"><div class="profile-kpis"><div class="profile-kpi"><b>%d</b><span>Saisons</span></div><div class="profile-kpi"><b>%d</b><span>Titel</span></div><div class="profile-kpi"><b>%d/%d</b><span>Siege/Spiele</span></div><div class="profile-kpi"><b>%.2f</b><span>Karriere-AVG</span></div><div class="profile-kpi"><b>%d</b><span>180er</span></div><div class="profile-kpi"><b>%d</b><span>High Finish</span></div><div class="profile-kpi"><b>%d</b><span>max. Siegesserie</span></div></div>`, htmlE(p.Name), p.Elo, p.Seasons, p.Titles, p.Wins, p.Matches, p.Average, p.OneEighties, p.HighFinish, p.MaxWinStreak)
+		fmt.Fprintf(b, `<details class="profile"><summary>%s · Elo %.0f</summary><div class="profile-body"><div class="profile-kpis"><div class="profile-kpi"><b>%d</b><span>Saisons</span></div><div class="profile-kpi"><b>%d</b><span>Titel</span></div><div class="profile-kpi"><b>%d/%d</b><span>Siege/Spiele</span></div><div class="profile-kpi"><b>%.2f</b><span>Karriere-AVG</span></div><div class="profile-kpi"><b>%d</b><span>171er</span></div><div class="profile-kpi"><b>%d</b><span>180er</span></div><div class="profile-kpi"><b>%d</b><span>High Finish</span></div><div class="profile-kpi"><b>%d</b><span>max. Siegesserie</span></div></div>`, htmlE(p.Name), p.Elo, p.Seasons, p.Titles, p.Wins, p.Matches, p.Average, p.Scores171, p.OneEighties, p.HighFinish, p.MaxWinStreak)
 		if cur.Name != "" {
 			fmt.Fprintf(b, `<p class="muted">Aktuelle Saison: %d Siege · %+d Legs · Ø %.2f · CO %.1f %%</p>`, cur.Wins, cur.LegDiff, cur.Average, cur.CheckoutPct)
 		}

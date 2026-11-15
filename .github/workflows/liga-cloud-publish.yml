@@ -1,4 +1,4 @@
-name: Autodarts Liga – Cloud-Veröffentlichung (Liga-Dashboard 0.11.2)
+name: Autodarts Liga – Cloud-Veröffentlichung (Liga-Dashboard 0.11.3 · Spielerprofile 171er)
 
 on:
   workflow_dispatch:
@@ -47,7 +47,7 @@ jobs:
           chmod +x "$RUNNER_TEMP/rclone-bin/rclone"
           echo "$RUNNER_TEMP/rclone-bin" >> "$GITHUB_PATH"
 
-      - name: OneDrive vollständig lesen und Liga mit Liga-Dashboard 0.11.2 bauen
+      - name: OneDrive vollständig lesen und Liga mit Liga-Dashboard 0.11.3 · Spielerprofile 171er bauen
         shell: bash
         env:
           LIGA_RCLONE_CONFIG_B64: ${{ secrets.LIGA_RCLONE_CONFIG_B64 }}
