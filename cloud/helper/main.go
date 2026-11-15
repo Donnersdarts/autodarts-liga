@@ -18,7 +18,7 @@ import (
 
 const (
 	appName       = "Autodarts Liga Sync Helper"
-	appVersion    = "0.9.9"
+	appVersion    = "0.10.0"
 	listenAddress = "127.0.0.1:17653"
 )
 
@@ -485,7 +485,25 @@ func (s *Server) handleSeasonCreate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	current, ok := seasonByID(reg, reg.CurrentSeasonID)
+	if !ok {
+		writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": "Aktive Saison konnte nicht ermittelt werden"})
+		return
+	}
+	players, err := s.participantsForNextSeason(league, current)
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": "Automatischer Saisonwechsel nicht möglich: " + err.Error()})
+		return
+	}
 	now := time.Now().UTC()
+	id := seasonSlug(name) + "-" + now.Format("20060102t150405")
+	newSeason := SeasonInfo{ID: id, Name: name, CreatedAt: now.Format(time.RFC3339Nano), Active: true}
+	schedule, rollbackSchedule, err := s.installSeasonSchedule(newSeason, players)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "Spielplan konnte nicht automatisch erzeugt werden: " + err.Error()})
+		return
+	}
+	previousReg := reg
 	for i := range reg.Seasons {
 		if reg.Seasons[i].ID == reg.CurrentSeasonID {
 			reg.Seasons[i].Active = false
@@ -494,17 +512,18 @@ func (s *Server) handleSeasonCreate(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	id := seasonSlug(name) + "-" + now.Format("20060102t150405")
-	newSeason := SeasonInfo{ID: id, Name: name, CreatedAt: now.Format(time.RFC3339Nano), Active: true}
 	reg.Seasons = append(reg.Seasons, newSeason)
 	reg.CurrentSeasonID = id
 	reg.LeagueName = league
 	if err := s.saveSeasonRegistryLocked(reg); err != nil {
+		rollbackSchedule()
+		_ = s.saveSeasonRegistryLocked(previousReg)
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
 	go s.generateOverviewForLeague(league)
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "currentSeason": newSeason, "currentSeasonId": id, "seasons": reg.Seasons})
+	s.queuePublishTrigger()
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "currentSeason": newSeason, "currentSeasonId": id, "seasons": reg.Seasons, "schedule": schedule})
 }
 
 func (s *Server) readDeletedIDs(league string) map[string]bool {

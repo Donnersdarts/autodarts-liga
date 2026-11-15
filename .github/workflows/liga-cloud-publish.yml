@@ -1,4 +1,4 @@
-name: Autodarts Liga – Cloud-Veröffentlichung (Finalspieltag 0.9.9)
+name: Autodarts Liga – Cloud-Veröffentlichung (Finalspieltag 0.10.0)
 
 on:
   workflow_dispatch:
@@ -47,7 +47,7 @@ jobs:
           chmod +x "$RUNNER_TEMP/rclone-bin/rclone"
           echo "$RUNNER_TEMP/rclone-bin" >> "$GITHUB_PATH"
 
-      - name: OneDrive vollständig lesen und Liga mit Finalspieltag 0.9.9 bauen
+      - name: OneDrive vollständig lesen und Liga mit Finalspieltag 0.10.0 bauen
         shell: bash
         env:
           LIGA_RCLONE_CONFIG_B64: ${{ secrets.LIGA_RCLONE_CONFIG_B64 }}
