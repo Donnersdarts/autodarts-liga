@@ -21,7 +21,7 @@ func TestLeagueHistoryBuildsCareerHeadToHeadAndRecords(t *testing.T) {
 		{ID: "place56", Winner: "E", Loser: "F", Status: "completed"}, {ID: "semi1", Winner: "A", Loser: "D", Status: "completed"}, {ID: "semi2", Winner: "B", Loser: "C", Status: "completed"}, {ID: "third", Winner: "C", Loser: "D", Status: "completed"}, {ID: "final", Winner: "A", Loser: "B", Status: "completed"},
 	}, SeasonAwards: []SeasonAward{{ID: "player-of-season", Title: "Spieler der Saison", Emoji: "🏆", Winner: "A", Value: "Test", Complete: true}}}
 	reg := SeasonRegistry{CurrentSeasonID: "s1", Seasons: []SeasonInfo{{ID: "s1", Name: "Saison 1", Closed: true}}}
-	h := buildLeagueHistory(reg, map[string]LeagueOverview{"s1": ov1}, map[string]*FinalState{"s1": st})
+	h := buildLeagueHistory(reg, map[string]LeagueOverview{"s1": ov1}, map[string]*FinalState{"s1": st}, nil)
 	a, ok := careerPlayer(h, "A")
 	if !ok {
 		t.Fatal("A missing")

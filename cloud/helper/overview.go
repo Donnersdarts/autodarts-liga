@@ -665,7 +665,8 @@ func (s *Server) generateOverviewForLeague(league string) {
 		log.Printf("Spielplan: %v", scheduleErr)
 		scheduleRows = nil
 	}
-	history := buildLeagueHistory(reg, overviews, finalStates)
+	historical := loadHistoricalSeasons(s.basePath())
+	history := buildLeagueHistory(reg, overviews, finalStates, historical)
 
 	var currentHTML, currentXLSX string
 	for _, season := range reg.Seasons {
@@ -1091,6 +1092,7 @@ func writeHTMLOverview(path string, ov LeagueOverview, seasons []SeasonInfo, cur
 	writeSeasonAwardsHTML(&b, finalState)
 	writeFinalSectionHTML(&b, finalState)
 	writeHallOfFameHTML(&b, extra.History)
+	writeHistoricalSeasonsHTML(&b, extra.History.Historical)
 	writeHeadToHeadHTML(&b, extra.History, seasons, currentSeasonID)
 	writeRecordsHTML(&b, extra.History)
 	writeProfilesHTML(&b, extra.History, ov)

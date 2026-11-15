@@ -46,6 +46,7 @@ type CareerPlayer struct {
 	MaxWinStreak     int
 	MaxLossStreak    int
 	Awards           []AwardHistoryItem
+	Placements       []PlacementHistoryItem
 }
 
 type H2HMatch struct {
@@ -116,6 +117,7 @@ type LeagueHistory struct {
 	Records      []LeagueRecord
 	AwardHistory []AwardHistoryItem
 	Form         []FormPlayer
+	Historical   []HistoricalSeason
 }
 
 type OverviewExtras struct {
@@ -150,7 +152,7 @@ func matchChronoLess(a, b MatchOverview) bool {
 	return a.MatchID < b.MatchID
 }
 
-func buildLeagueHistory(reg SeasonRegistry, overviews map[string]LeagueOverview, finals map[string]*FinalState) LeagueHistory {
+func buildLeagueHistory(reg SeasonRegistry, overviews map[string]LeagueOverview, finals map[string]*FinalState, historical []HistoricalSeason) LeagueHistory {
 	type careerAcc struct {
 		p           CareerPlayer
 		seasons     map[string]bool
@@ -175,6 +177,31 @@ func buildLeagueHistory(reg SeasonRegistry, overviews map[string]LeagueOverview,
 
 	var h2h []H2HMatch
 	var awardHistory []AwardHistoryItem
+
+	// Historische Saisons enthalten bewusst nur die sicher bekannten Abschlussplaetze.
+	// Sie zaehlen fuer Saisonanzahl und Podiumsplatzierungen, aber niemals fuer
+	// Matchstatistiken, Elo, Rekorde oder Awards.
+	for _, hs := range historical {
+		if validateHistoricalSeason(hs) != nil {
+			continue
+		}
+		for i, name := range hs.Placements {
+			a := get(name)
+			if a == nil {
+				continue
+			}
+			a.seasons[hs.ID] = true
+			a.p.Placements = append(a.p.Placements, PlacementHistoryItem{SeasonID: hs.ID, SeasonName: hs.Name, Place: i + 1, Historical: true})
+			switch i {
+			case 0:
+				a.p.Titles++
+			case 1:
+				a.p.RunnerUp++
+			case 2:
+				a.p.Third++
+			}
+		}
+	}
 	maxAvg := struct {
 		name, season string
 		value        float64
@@ -348,6 +375,11 @@ func buildLeagueHistory(reg SeasonRegistry, overviews map[string]LeagueOverview,
 		if st := finals[season.ID]; st != nil {
 			places := finalPlacements(st)
 			if len(places) == 6 {
+				for i, name := range places {
+					if a := get(name); a != nil {
+						a.p.Placements = append(a.p.Placements, PlacementHistoryItem{SeasonID: season.ID, SeasonName: season.Name, Place: i + 1})
+					}
+				}
 				if a := get(places[0]); a != nil {
 					a.p.Titles++
 				}
@@ -445,7 +477,7 @@ func buildLeagueHistory(reg SeasonRegistry, overviews map[string]LeagueOverview,
 		}
 	}
 
-	history := LeagueHistory{Players: players, H2HMatches: h2h, Records: records, AwardHistory: awardHistory}
+	history := LeagueHistory{Players: players, H2HMatches: h2h, Records: records, AwardHistory: awardHistory, Historical: append([]HistoricalSeason(nil), historical...)}
 	if cur, ok := overviews[reg.CurrentSeasonID]; ok {
 		history.Form = buildFormRanking(cur)
 	}
@@ -724,9 +756,9 @@ func writeHallOfFameHTML(b *strings.Builder, history LeagueHistory) {
 		b.WriteString(`<p class="muted">Die Hall of Fame füllt sich mit den ersten Ligaspielen.</p></div>`)
 		return
 	}
-	b.WriteString(`<table class="hall-table"><thead><tr><th>#</th><th>Spieler</th><th>🏆</th><th>🥈</th><th>🥉</th><th>Sp.</th><th>S</th><th>Ø</th><th>180</th><th>Elo</th></tr></thead><tbody>`)
+	b.WriteString(`<table class="hall-table"><thead><tr><th>#</th><th>Spieler</th><th>Saisons</th><th>🏆</th><th>🥈</th><th>🥉</th><th>Sp.</th><th>S</th><th>Ø</th><th>180</th><th>Elo</th></tr></thead><tbody>`)
 	for i, p := range history.Players {
-		fmt.Fprintf(b, `<tr><td>%d</td><td>%s</td><td>%d</td><td>%d</td><td>%d</td><td>%d</td><td>%d</td><td>%.2f</td><td>%d</td><td>%.0f</td></tr>`, i+1, htmlE(p.Name), p.Titles, p.RunnerUp, p.Third, p.Matches, p.Wins, p.Average, p.OneEighties, p.Elo)
+		fmt.Fprintf(b, `<tr><td>%d</td><td>%s</td><td>%d</td><td>%d</td><td>%d</td><td>%d</td><td>%d</td><td>%d</td><td>%.2f</td><td>%d</td><td>%.0f</td></tr>`, i+1, htmlE(p.Name), p.Seasons, p.Titles, p.RunnerUp, p.Third, p.Matches, p.Wins, p.Average, p.OneEighties, p.Elo)
 	}
 	b.WriteString(`</tbody></table></div>`)
 }
@@ -753,9 +785,22 @@ func writeProfilesHTML(b *strings.Builder, history LeagueHistory, current League
 	b.WriteString(`<div class="profile-grid">`)
 	for _, p := range history.Players {
 		cur, _ := playerByName(current, p.Name)
-		fmt.Fprintf(b, `<details class="profile"><summary>%s · Elo %.0f</summary><div class="profile-body"><div class="profile-kpis"><div class="profile-kpi"><b>%d</b><span>Titel</span></div><div class="profile-kpi"><b>%d/%d</b><span>Siege/Spiele</span></div><div class="profile-kpi"><b>%.2f</b><span>Karriere-AVG</span></div><div class="profile-kpi"><b>%d</b><span>180er</span></div><div class="profile-kpi"><b>%d</b><span>High Finish</span></div><div class="profile-kpi"><b>%d</b><span>max. Siegesserie</span></div></div>`, htmlE(p.Name), p.Elo, p.Titles, p.Wins, p.Matches, p.Average, p.OneEighties, p.HighFinish, p.MaxWinStreak)
+		fmt.Fprintf(b, `<details class="profile"><summary>%s · Elo %.0f</summary><div class="profile-body"><div class="profile-kpis"><div class="profile-kpi"><b>%d</b><span>Saisons</span></div><div class="profile-kpi"><b>%d</b><span>Titel</span></div><div class="profile-kpi"><b>%d/%d</b><span>Siege/Spiele</span></div><div class="profile-kpi"><b>%.2f</b><span>Karriere-AVG</span></div><div class="profile-kpi"><b>%d</b><span>180er</span></div><div class="profile-kpi"><b>%d</b><span>High Finish</span></div><div class="profile-kpi"><b>%d</b><span>max. Siegesserie</span></div></div>`, htmlE(p.Name), p.Elo, p.Seasons, p.Titles, p.Wins, p.Matches, p.Average, p.OneEighties, p.HighFinish, p.MaxWinStreak)
 		if cur.Name != "" {
 			fmt.Fprintf(b, `<p class="muted">Aktuelle Saison: %d Siege · %+d Legs · Ø %.2f · CO %.1f %%</p>`, cur.Wins, cur.LegDiff, cur.Average, cur.CheckoutPct)
+		}
+		if len(p.Placements) > 0 {
+			items := append([]PlacementHistoryItem(nil), p.Placements...)
+			sort.SliceStable(items, func(i, j int) bool { return items[i].SeasonName < items[j].SeasonName })
+			b.WriteString(`<div><b>Platzierungen:</b><br>`)
+			for _, ph := range items {
+				suffix := ""
+				if ph.Historical {
+					suffix = " · historisch"
+				}
+				fmt.Fprintf(b, `<span class="award-chip">%s · Platz %d%s</span>`, htmlE(ph.SeasonName), ph.Place, htmlE(suffix))
+			}
+			b.WriteString(`</div>`)
 		}
 		if len(p.Awards) > 0 {
 			b.WriteString(`<div><b>Awards:</b><br>`)
