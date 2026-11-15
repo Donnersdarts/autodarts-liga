@@ -219,7 +219,7 @@ def run(site,folder):
     schedule=read_schedule(folder)
     current,all_seasons=seasons(folder)
     all_matches=matches(folder)
-    pages=sorted(site.glob('*.html'))
+    pages=sorted([p for p in site.glob('*.html') if p.name=='index.html' or p.name.startswith('season-')])
     if not pages: raise ValueError('Keine HTML-Seiten im site-Ordner gefunden')
     # Prüfen, dass jede Seite die richtige Struktur hat, bevor wir irgendetwas ändern.
     for page in pages:

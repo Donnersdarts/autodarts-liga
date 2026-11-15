@@ -2,9 +2,12 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
@@ -69,7 +72,14 @@ func generateSeasonSchedule(seasonID string, players []string) ([]ScheduleRow, e
 	if strings.TrimSpace(seasonID) == "" {
 		return nil, errors.New("Saison-ID fehlt")
 	}
+	// Jede Saison bekommt eine andere, aber aus der Saison-ID reproduzierbare
+	// Startreihenfolge. So wiederholt sich nicht Jahr fuer Jahr derselbe
+	// Spieltag 1, waehrend alle sechs PCs denselben Plan erzeugen wuerden.
 	ring := append([]string(nil), players...)
+	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(seasonID))))
+	seed := int64(binary.LittleEndian.Uint64(sum[:8]) & 0x7fffffffffffffff)
+	rng := rand.New(rand.NewSource(seed))
+	rng.Shuffle(len(ring), func(i, j int) { ring[i], ring[j] = ring[j], ring[i] })
 	first := make([]ScheduleRow, 0, expectedLeagueMatches/2)
 	idx := 0
 	for round := 0; round < expectedMatchdays/2; round++ {

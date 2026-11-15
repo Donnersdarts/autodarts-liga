@@ -18,7 +18,7 @@ import (
 
 const (
 	appName       = "Autodarts Liga Sync Helper"
-	appVersion    = "0.10.0"
+	appVersion    = "0.11.0"
 	listenAddress = "127.0.0.1:17653"
 )
 
@@ -147,6 +147,7 @@ func main() {
 	mux.HandleFunc("/api/final-match", srv.handleFinalMatch)
 	mux.HandleFunc("/api/walkover", srv.handleWalkover)
 	mux.HandleFunc("/api/overview", srv.handleOverview)
+	mux.HandleFunc("/api/health", srv.handleLeagueHealth)
 	mux.HandleFunc("/api/web-status", srv.handleWebStatus)
 	mux.HandleFunc("/api/web-publish", srv.handleWebPublish)
 	mux.HandleFunc("/overview", srv.handleOverviewPage)

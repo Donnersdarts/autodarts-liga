@@ -61,7 +61,7 @@ DATA_SHA="${DATA_FINGERPRINT%% *}"
 DATA_FILES="${DATA_FINGERPRINT##* }"
 MATCH_FILES="$(find "$WORK/app/Liga-Daten/Matches" -maxdepth 1 -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ')"
 
-echo '3/5 Cloud-Helper 0.10.0 wird gebaut ...'
+echo '3/5 Cloud-Helper 0.11.0 wird gebaut ...'
 (cd "$ROOT/cloud/helper" && GO111MODULE=off go test ./... && GO111MODULE=off go build -o "$WORK/AutodartsLigaSyncHelper" .)
 
 python3 - "$WORK/usercfg/AutodartsLigaSync/config.json" "$WORK/app/Liga-Daten" <<'PY'
@@ -105,6 +105,7 @@ rm -rf "$ROOT/site"
 mkdir -p "$ROOT/site"
 cp "$WORK/app/Liga-Übersicht.html" "$ROOT/site/index.html"
 find "$WORK/app" -maxdepth 1 -type f -name 'season-*.html' -exec cp {} "$ROOT/site/" \;
+find "$WORK/app" -maxdepth 1 -type f -name 'abschluss-*.html' -exec cp {} "$ROOT/site/" \;
 
 # Spielplan aus OneDrive/Liga-Daten/Spielplan.csv wieder einfügen.
 # Nur lesend: die CSV und Matchdaten im OneDrive-Arbeitskopie werden nicht verändert.
@@ -135,13 +136,19 @@ grep -q 'id="spielplan"' "$ROOT/site/index.html" || {
     echo 'FEHLER: Der Spielplan wurde nicht in die Homepage eingebaut.' >&2
     exit 4
 }
+for marker in 'Hall of Fame' 'Head-to-Head' 'Rekordbuch' 'Spielerprofile' 'System-Gesundheit' 'Aktueller Spieltag'; do
+    grep -q "$marker" "$ROOT/site/index.html" || {
+        echo "FEHLER: Analytics-Bereich fehlt: $marker" >&2
+        exit 4
+    }
+done
 
 python3 - "$ROOT/site/build-info.json" "$DATA_SHA" "$DATA_FILES" "$MATCH_FILES" <<'PY'
 import datetime, json, os, pathlib, sys
 out = pathlib.Path(sys.argv[1])
 data = {
     'format': 'autodarts-liga-cloud-build',
-    'version': '0.10.0',
+    'version': '0.11.0',
     'generatedAtUtc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
     'githubSha': os.environ.get('GITHUB_SHA',''),
     'oneDriveDataSha256': sys.argv[2],
@@ -149,6 +156,11 @@ data = {
     'regularMatchFileCount': int(sys.argv[4]),
     'finalspieltag': True,
     'spielplan': True,
+    'hallOfFame': True,
+    'headToHead': True,
+    'recordBook': True,
+    'playerProfiles': True,
+    'healthCheck': True,
 }
 out.write_text(json.dumps(data, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
 PY
@@ -156,4 +168,4 @@ PY
 echo '5/5 Build ist vollständig. Erst jetzt darf GitHub Pages veröffentlichen.'
 echo "OneDrive-Fingerprint: $DATA_SHA"
 echo "OneDrive-Dateien: $DATA_FILES | reguläre Matchdateien: $MATCH_FILES"
-echo "Saisonseiten: $(find "$ROOT/site" -maxdepth 1 -name 'season-*.html' | wc -l | tr -d ' ')"
+echo "Saisonseiten: $(find "$ROOT/site" -maxdepth 1 -name 'season-*.html' | wc -l | tr -d ' ') | Abschlussseiten: $(find "$ROOT/site" -maxdepth 1 -name 'abschluss-*.html' | wc -l | tr -d ' ')"
