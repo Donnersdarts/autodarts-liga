@@ -55,30 +55,32 @@ type OverviewMatch struct {
 }
 
 type PlayerOverview struct {
-	Name             string
-	Aliases          []string
-	Matches          int
-	Wins             int
-	Losses           int
-	LegsFor          int
-	LegsAgainst      int
-	LegDiff          int
-	Average          float64
-	AverageCount     int
-	CheckoutPct      float64
-	CheckoutHits     int
-	CheckoutAttempts int
-	Scores95Plus     int
-	Scores114Plus    int
-	Scores133Plus    int
-	Scores171        int
-	Scores174        int
-	Scores177        int
-	OneEighties      int
-	ScoringComplete  bool
-	ScoringKnown     map[string]bool
-	HighFinish       int
-	Darts            int
+	Name                 string
+	Aliases              []string
+	Matches              int
+	Wins                 int
+	Losses               int
+	LegsFor              int
+	LegsAgainst          int
+	LegDiff              int
+	Average              float64
+	AverageCount         int
+	CheckoutPct          float64
+	CheckoutHits         int
+	CheckoutAttempts     int
+	DoubleMisses         int
+	CheckoutDataComplete bool
+	Scores95Plus         int
+	Scores114Plus        int
+	Scores133Plus        int
+	Scores171            int
+	Scores174            int
+	Scores177            int
+	OneEighties          int
+	ScoringComplete      bool
+	ScoringKnown         map[string]bool
+	HighFinish           int
+	Darts                int
 }
 
 type MatchOverview struct {
@@ -375,10 +377,11 @@ func (s *Server) knownLeagueNames() []string {
 func makeLeagueOverview(league, seasonID, seasonName string, isCurrent bool, raw []OverviewMatch) LeagueOverview {
 	ov := LeagueOverview{LeagueName: league, SeasonID: seasonID, SeasonName: seasonName, IsCurrent: isCurrent, Generated: time.Now()}
 	type acc struct {
-		P           PlayerOverview
-		aliasSet    map[string]bool
-		avgSum      float64
-		statMatches int
+		P               PlayerOverview
+		aliasSet        map[string]bool
+		avgSum          float64
+		statMatches     int
+		checkoutMissing bool
 	}
 	players := map[string]*acc{}
 	for _, m := range raw {
@@ -432,6 +435,11 @@ func makeLeagueOverview(league, seasonID, seasonName string, isCurrent bool, raw
 			}
 			attempts, attemptsOK := metricFloat(p.Metrics, "checkoutAttempts")
 			if !attemptsOK {
+				// Für den Double-Trouble-Award merken wir, dass mindestens ein Match
+				// keine explizite Zahl der Doppelversuche enthält. Die Liga-Checkoutquote
+				// darf weiterhin den bewährten Prozent-Fallback verwenden, der Award
+				// selbst wird dann aber transparent als nicht vollständig abgesichert markiert.
+				a.checkoutMissing = true
 				// Fallback fuer aeltere Matchdateien ohne explizite Versuchszahl.
 				if pct, ok := metricFloat(p.Metrics, "checkoutPct"); ok {
 					if math.Abs(pct) <= 1 {
@@ -585,6 +593,11 @@ func makeLeagueOverview(league, seasonID, seasonName string, isCurrent bool, raw
 		if a.P.CheckoutAttempts > 0 {
 			a.P.CheckoutPct = float64(a.P.CheckoutHits) / float64(a.P.CheckoutAttempts) * 100
 		}
+		a.P.DoubleMisses = a.P.CheckoutAttempts - a.P.CheckoutHits
+		if a.P.DoubleMisses < 0 {
+			a.P.DoubleMisses = 0
+		}
+		a.P.CheckoutDataComplete = a.statMatches > 0 && !a.checkoutMissing
 		for alias := range a.aliasSet {
 			a.P.Aliases = append(a.P.Aliases, alias)
 		}
@@ -1016,6 +1029,7 @@ func writeHTMLOverview(path string, ov LeagueOverview, seasons []SeasonInfo, cur
 	}
 	b.WriteString(`</tbody></table><div class="muted" style="margin-top:9px">Scoring exklusiv: 95+ = 95–113 · 114+ = 114–132 · 133+ = 133–170 · 171 / 174 / 177 / 180 jeweils exakt. „≥ Zahl*“ = bisher nachweisbarer Mindestwert; mindestens ein Match hat unvollständige Scoring-Daten. Dieser Wert ist KEIN vollständiger Saisonwert. Betroffene Spiele im GitHub-Actions-Protokoll ermitteln und erneut mit vollständiger Wurfhistorie auswerten.</div></div>`)
 	writeSeasonHighlightsHTML(&b, ov)
+	writeSeasonAwardsHTML(&b, finalState)
 	writeFinalSectionHTML(&b, finalState)
 	b.WriteString(`<div class="panel"><h2>Ergebnisse</h2><div class="matches">`)
 	matches := append([]MatchOverview(nil), ov.Matches...)

@@ -84,23 +84,25 @@ type FinalPlayerStat struct {
 }
 
 type FinalState struct {
-	Format          string            `json:"format"`
-	Version         int               `json:"version"`
-	LeagueName      string            `json:"leagueName"`
-	SeasonID        string            `json:"seasonId"`
-	SeasonName      string            `json:"seasonName"`
-	Status          string            `json:"status"`
-	Available       bool              `json:"available"`
-	RegularLocked   bool              `json:"regularLocked"`
-	CreatedAt       string            `json:"createdAt,omitempty"`
-	UpdatedAt       string            `json:"updatedAt,omitempty"`
-	CompletedAt     string            `json:"completedAt,omitempty"`
-	Champion        string            `json:"champion,omitempty"`
-	Progress        LeagueProgress    `json:"progress"`
-	FrozenTable     []FrozenStanding  `json:"frozenTable,omitempty"`
-	Fixtures        []FinalFixture    `json:"fixtures"`
-	FinalStats      []FinalPlayerStat `json:"finalStats,omitempty"`
-	FinalStatsGames int               `json:"finalStatsGames"`
+	Format           string            `json:"format"`
+	Version          int               `json:"version"`
+	LeagueName       string            `json:"leagueName"`
+	SeasonID         string            `json:"seasonId"`
+	SeasonName       string            `json:"seasonName"`
+	Status           string            `json:"status"`
+	Available        bool              `json:"available"`
+	RegularLocked    bool              `json:"regularLocked"`
+	CreatedAt        string            `json:"createdAt,omitempty"`
+	UpdatedAt        string            `json:"updatedAt,omitempty"`
+	CompletedAt      string            `json:"completedAt,omitempty"`
+	Champion         string            `json:"champion,omitempty"`
+	Progress         LeagueProgress    `json:"progress"`
+	FrozenTable      []FrozenStanding  `json:"frozenTable,omitempty"`
+	Fixtures         []FinalFixture    `json:"fixtures"`
+	FinalStats       []FinalPlayerStat `json:"finalStats,omitempty"`
+	FinalStatsGames  int               `json:"finalStatsGames"`
+	SeasonAwards     []SeasonAward     `json:"seasonAwards,omitempty"`
+	AwardsComputedAt string            `json:"awardsComputedAt,omitempty"`
 }
 
 type FinalMatchFile struct {
@@ -258,7 +260,9 @@ func previewFinalState(ov LeagueOverview) *FinalState {
 		{ID: "third", Order: 4, Label: "Spiel um Platz 3", Status: "locked"},
 		{ID: "final", Order: 5, Label: "Finale", Status: "locked"},
 	}
-	return &FinalState{Format: "autodarts-match-analytics-final", Version: 1, LeagueName: ov.LeagueName, SeasonID: ov.SeasonID, SeasonName: ov.SeasonName, Status: "locked", Available: false, RegularLocked: false, Progress: progress, Fixtures: fixtures}
+	st := &FinalState{Format: "autodarts-match-analytics-final", Version: 1, LeagueName: ov.LeagueName, SeasonID: ov.SeasonID, SeasonName: ov.SeasonName, Status: "locked", Available: false, RegularLocked: false, Progress: progress, Fixtures: fixtures}
+	refreshSeasonAwards(st, ov)
+	return st
 }
 
 func (s *Server) loadFinalState(seasonID string) (*FinalState, error) {
@@ -627,6 +631,10 @@ func (s *Server) ensureFinalStateForOverviewLocked(ov LeagueOverview) (*FinalSta
 		if err := s.reconcileFinalState(st); err != nil {
 			return nil, err
 		}
+		// Awards are recalculated from REGULAR-SEASON data on every overview load.
+		// During the season this keeps the live leaders current; after the regular
+		// season they naturally freeze because final-day matches are excluded.
+		refreshSeasonAwards(st, ov)
 		_ = s.saveFinalState(st)
 		if st.Status == "completed" {
 			_ = s.markSeasonCompleted(st.LeagueName, st.SeasonID, st.Champion, st.CompletedAt)
@@ -643,6 +651,7 @@ func (s *Server) ensureFinalStateForOverviewLocked(ov LeagueOverview) (*FinalSta
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	st := &FinalState{Format: "autodarts-match-analytics-final", Version: 1, LeagueName: ov.LeagueName, SeasonID: ov.SeasonID, SeasonName: ov.SeasonName, Status: "ready", Available: true, RegularLocked: true, CreatedAt: now, Progress: progress, FrozenTable: table, Fixtures: initialFinalFixtures(table)}
+	refreshSeasonAwards(st, ov)
 	if err := s.saveFinalState(st); err != nil {
 		return nil, err
 	}
@@ -1029,7 +1038,7 @@ func writeFinalSectionHTML(b *strings.Builder, st *FinalState) {
 	if st == nil {
 		return
 	}
-	b.WriteString(`<style>.final-panel{position:relative}.final-lock{opacity:.58;filter:grayscale(.45)}.final-progress{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 16px}.final-progress span{border:1px solid #30465d;border-radius:999px;padding:6px 10px;font-size:12px;color:#bdd4e9}.frozen-badge{display:inline-block;margin-left:8px;border:1px solid #4aa882;background:#102b27;color:#74efbc;border-radius:999px;padding:4px 8px;font-size:11px;font-weight:800}.final-order{display:grid;gap:10px}.final-game{position:relative;border:1px solid #2b4054;background:#0d1826;border-radius:12px;padding:12px}.final-game.ready{border-color:#52a8f5;box-shadow:0 0 0 1px #52a8f533}.final-game.completed{border-color:#2b8d68;background:#102722}.final-game.locked{opacity:.58}.final-game .ord{font-size:10px;letter-spacing:.12em;color:#8ec4ff;font-weight:900}.final-game h3{margin:4px 0 10px;font-size:14px}.final-players{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center}.final-players span:last-child{text-align:right}.final-score{font-weight:900;font-size:18px}.final-winner{color:#59e391;font-weight:800}.champion{margin:12px 0 18px;padding:20px;border:1px solid #e7b84b;background:linear-gradient(135deg,#352711,#151d2a);border-radius:16px;text-align:center}.champion .cup{font-size:28px}.champion strong{display:block;font-size:28px;margin:4px}.final-bracket{display:grid;grid-template-columns:1.15fr .9fr 1fr;gap:28px;align-items:center;margin:18px 0}.bracket-col{display:grid;gap:12px;position:relative}.bracket-col.link-right:after{content:'';position:absolute;right:-28px;top:50%;width:28px;border-top:2px solid #35536e}.bracket-title{font-size:11px;letter-spacing:.12em;color:#8ec4ff;font-weight:900;text-align:center}.bracket-placeholder{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;color:#9cb0c5;font-size:12px}.bracket-placeholder span:last-child{text-align:right}.final-sequence{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0 16px}.final-sequence span{font-size:11px;border:1px solid #2b4054;border-radius:999px;padding:5px 8px;color:#a9bdd0}.final-sequence b{color:#e9f5ff}.final-stats-note{margin:8px 0;color:#9cb0c5;font-size:12px}@media(max-width:760px){.final-bracket{grid-template-columns:1fr}.final-players{grid-template-columns:1fr auto 1fr}}</style>`)
+	b.WriteString(`<style>.final-panel{position:relative}.final-lock{opacity:.58;filter:grayscale(.45)}.final-progress{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 16px}.final-progress span{border:1px solid #30465d;border-radius:999px;padding:6px 10px;font-size:12px;color:#bdd4e9}.frozen-badge{display:inline-block;margin-left:8px;border:1px solid #4aa882;background:#102b27;color:#74efbc;border-radius:999px;padding:4px 8px;font-size:11px;font-weight:800}.final-order{display:grid;gap:10px}.final-game{position:relative;border:1px solid #2b4054;background:#0d1826;border-radius:12px;padding:12px}.final-game.ready{border-color:#52a8f5;box-shadow:0 0 0 1px #52a8f533}.final-game.completed{border-color:#2b8d68;background:#102722}.final-game.locked{opacity:.58}.final-game .ord{font-size:10px;letter-spacing:.12em;color:#8ec4ff;font-weight:900}.final-game h3{margin:4px 0 10px;font-size:14px}.final-players{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center}.final-players span:last-child{text-align:right}.final-score{font-weight:900;font-size:18px}.final-winner{color:#59e391;font-weight:800}.champion{margin:12px 0 18px;padding:20px;border:1px solid #e7b84b;background:linear-gradient(135deg,#352711,#151d2a);border-radius:16px;text-align:center}.champion .cup{font-size:28px}.champion strong{display:block;font-size:28px;margin:4px}.final-bracket{display:grid;grid-template-columns:1.15fr .9fr 1fr;gap:28px;align-items:center;margin:18px 0}.bracket-col{display:grid;gap:12px;position:relative}.bracket-col.link-right:after{content:'';position:absolute;right:-28px;top:50%;width:28px;border-top:2px solid #35536e}.bracket-title{font-size:11px;letter-spacing:.12em;color:#8ec4ff;font-weight:900;text-align:center}.bracket-placeholder{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;color:#9cb0c5;font-size:12px}.bracket-placeholder span:last-child{text-align:right}.final-sequence{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0 16px}.final-sequence span{font-size:11px;border:1px solid #2b4054;border-radius:999px;padding:5px 8px;color:#a9bdd0}.final-sequence b{color:#e9f5ff}.final-stats-note{margin:8px 0;color:#9cb0c5;font-size:12px}.season-awards{margin-top:22px}.season-awards h2{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.award-phase{display:inline-block;border:1px solid #35536e;border-radius:999px;padding:4px 8px;font-size:10px;color:#8ec4ff;letter-spacing:.04em}.season-awards-note{color:#9cb0c5;font-size:12px;margin:-4px 0 12px}.season-awards-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.season-award{display:grid;grid-template-columns:44px 1fr;gap:10px;align-items:start;border:1px solid #2b4054;background:#0d1826;border-radius:12px;padding:12px}.season-award.negative{border-color:#75424b;background:#21171d}.season-award.incomplete{border-style:dashed}.season-award-icon{font-size:28px;line-height:1}.season-award-copy span{display:block;color:#8ec4ff;font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.season-award.negative .season-award-copy span{color:#ff9aa8}.season-award-copy strong{display:block;font-size:18px;margin:2px 0}.season-award-copy b{display:block;font-size:12px;color:#dcecff}.season-award-copy small{display:block;color:#9cb0c5;font-size:10px;line-height:1.4;margin-top:5px}@media(max-width:760px){.final-bracket{grid-template-columns:1fr}.final-players{grid-template-columns:1fr auto 1fr}.season-awards-grid{grid-template-columns:1fr}}</style>`)
 	class := "panel final-panel"
 	if !st.Available {
 		class += " final-lock"
