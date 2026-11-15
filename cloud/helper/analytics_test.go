@@ -103,10 +103,13 @@ func TestOverviewRendersAnalyticsAndSummaryLink(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(raw)
-	for _, want := range []string{"Hall of Fame", "Head-to-Head", "Rekordbuch", "Spielerprofile", "Form-Ranking", "abschluss-s1.html"} {
+	for _, want := range []string{"Hall of Fame", "Head-to-Head", "Rekordbuch", "Spielerprofile", "Form-Ranking", "abschluss-s1.html", "data-tab=\"spielplan\"", "data-tab=\"statistiken\"", "data-tab=\"historie\"", "data-tab=\"finale\"", "LIGA_SPIELPLAN_SLOT"} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("missing %q", want)
 		}
+	}
+	if strings.Contains(s, "System-Gesundheit") {
+		t.Fatal("System-Gesundheit darf auf der Homepage nicht mehr sichtbar sein")
 	}
 }
 

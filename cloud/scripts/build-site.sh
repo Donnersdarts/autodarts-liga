@@ -61,7 +61,7 @@ DATA_SHA="${DATA_FINGERPRINT%% *}"
 DATA_FILES="${DATA_FINGERPRINT##* }"
 MATCH_FILES="$(find "$WORK/app/Liga-Daten/Matches" -maxdepth 1 -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ')"
 
-echo '3/5 Cloud-Helper 0.11.1 wird gebaut ...'
+echo '3/5 Cloud-Helper 0.11.2 wird gebaut ...'
 (cd "$ROOT/cloud/helper" && GO111MODULE=off go test ./... && GO111MODULE=off go build -o "$WORK/AutodartsLigaSyncHelper" .)
 
 python3 - "$WORK/usercfg/AutodartsLigaSync/config.json" "$WORK/app/Liga-Daten" <<'PY'
@@ -136,19 +136,23 @@ grep -q 'id="spielplan"' "$ROOT/site/index.html" || {
     echo 'FEHLER: Der Spielplan wurde nicht in die Homepage eingebaut.' >&2
     exit 4
 }
-for marker in 'Hall of Fame' 'Head-to-Head' 'Rekordbuch' 'Spielerprofile' 'System-Gesundheit' 'Aktueller Spieltag'; do
+for marker in 'Hall of Fame' 'Head-to-Head' 'Rekordbuch' 'Spielerprofile' 'Aktueller Spieltag' 'data-tab="spielplan"' 'data-tab="statistiken"' 'data-tab="historie"' 'data-tab="finale"'; do
     grep -q "$marker" "$ROOT/site/index.html" || {
         echo "FEHLER: Analytics-Bereich fehlt: $marker" >&2
         exit 4
     }
 done
+if grep -q 'System-Gesundheit' "$ROOT/site/index.html"; then
+    echo 'FEHLER: Systemgesundheit ist noch sichtbar auf der Homepage.' >&2
+    exit 4
+fi
 
 python3 - "$ROOT/site/build-info.json" "$DATA_SHA" "$DATA_FILES" "$MATCH_FILES" <<'PY'
 import datetime, json, os, pathlib, sys
 out = pathlib.Path(sys.argv[1])
 data = {
     'format': 'autodarts-liga-cloud-build',
-    'version': '0.11.1',
+    'version': '0.11.2',
     'generatedAtUtc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
     'githubSha': os.environ.get('GITHUB_SHA',''),
     'oneDriveDataSha256': sys.argv[2],
@@ -160,7 +164,9 @@ data = {
     'headToHead': True,
     'recordBook': True,
     'playerProfiles': True,
-    'healthCheck': True,
+    'healthCheckBackend': True,
+    'healthCheckVisibleOnHomepage': False,
+    'dashboardTabs': ['spielplan','statistiken','historie','finale'],
     'historicalSeasonsSupport': True,
 }
 out.write_text(json.dumps(data, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')

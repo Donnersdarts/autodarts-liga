@@ -207,11 +207,11 @@ def inject_page(path,content):
     markup=path.read_text(encoding='utf-8')
     markup=re.sub(re.escape(SECTION_START)+r'.*?'+re.escape(SECTION_END),'',markup,flags=re.S)
     markup=markup.replace(CSS,'')
-    target='<div class="panel"><h2>Ligatabelle</h2>'
+    target='<!-- LIGA_SPIELPLAN_SLOT -->'
     if target not in markup or '</head>' not in markup:
-        raise ValueError(f'{path.name}: Ligatabellen-Einfügestelle nicht gefunden, keine Änderungen geschrieben')
+        raise ValueError(f'{path.name}: Spielplan-Einfügestelle nicht gefunden, keine Änderungen geschrieben')
     markup=markup.replace('</head>',CSS+'</head>',1)
-    markup=markup.replace(target,content+target,1)
+    markup=markup.replace(target,content,1)
     path.write_text(markup,encoding='utf-8')
 
 
@@ -223,8 +223,8 @@ def run(site,folder):
     if not pages: raise ValueError('Keine HTML-Seiten im site-Ordner gefunden')
     # Prüfen, dass jede Seite die richtige Struktur hat, bevor wir irgendetwas ändern.
     for page in pages:
-        if '<div class="panel"><h2>Ligatabelle</h2>' not in page.read_text(encoding='utf-8'):
-            raise ValueError(f'{page.name}: Ligatabellen-Einfügestelle fehlt')
+        if '<!-- LIGA_SPIELPLAN_SLOT -->' not in page.read_text(encoding='utf-8'):
+            raise ValueError(f'{page.name}: Spielplan-Einfügestelle fehlt')
     for page in pages:
         sid=current if page.name=='index.html' else page.stem.removeprefix('season-')
         sname=all_seasons.get(sid,'')

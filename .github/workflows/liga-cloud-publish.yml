@@ -1,4 +1,4 @@
-name: Autodarts Liga – Cloud-Veröffentlichung (Liga-Analytics 0.11.1)
+name: Autodarts Liga – Cloud-Veröffentlichung (Liga-Dashboard 0.11.2)
 
 on:
   workflow_dispatch:
@@ -47,7 +47,7 @@ jobs:
           chmod +x "$RUNNER_TEMP/rclone-bin/rclone"
           echo "$RUNNER_TEMP/rclone-bin" >> "$GITHUB_PATH"
 
-      - name: OneDrive vollständig lesen und Liga mit Liga-Analytics 0.11.1 bauen
+      - name: OneDrive vollständig lesen und Liga mit Liga-Dashboard 0.11.2 bauen
         shell: bash
         env:
           LIGA_RCLONE_CONFIG_B64: ${{ secrets.LIGA_RCLONE_CONFIG_B64 }}
@@ -69,8 +69,12 @@ jobs:
           grep -q 'Head-to-Head' site/index.html
           grep -q 'Rekordbuch' site/index.html
           grep -q 'Spielerprofile' site/index.html
-          grep -q 'System-Gesundheit' site/index.html
-          echo 'OK: Das aktuelle OneDrive-Build-Artefakt mit Spielplan, Liga-Analytics, Live-Awards und Finalspieltag liegt vollständig vor.'
+          grep -q 'data-tab="spielplan"' site/index.html
+          grep -q 'data-tab="statistiken"' site/index.html
+          grep -q 'data-tab="historie"' site/index.html
+          grep -q 'data-tab="finale"' site/index.html
+          if grep -q 'System-Gesundheit' site/index.html; then echo 'FEHLER: Systemgesundheit darf nicht auf der Homepage sichtbar sein.' >&2; exit 4; fi
+          echo 'OK: Das aktuelle OneDrive-Build-Artefakt mit kompaktem Liga-Dashboard, Spielplan, Live-Awards und Finalspieltag liegt vollständig vor.'
           cat site/build-info.json
 
       - name: Prüf-Artefakt speichern

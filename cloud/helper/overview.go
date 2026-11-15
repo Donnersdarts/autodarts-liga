@@ -702,7 +702,7 @@ func (s *Server) generateOverviewForLeague(league string) {
 		_ = copyFileAtomic(currentXLSX, filepath.Join(dir, "Liga-Übersicht.xlsx"))
 	}
 	readme := filepath.Join(dir, "LIGA_UEBERSICHT_LESEN.txt")
-	_ = os.WriteFile(readme, []byte("AUTODARTS LIGA – SAISONÜBERSICHT OHNE ADD-ON\n\nLiga-Übersicht.xlsx  -> aktive Saison in OneDrive / Excel Online / Excel\nLiga-Übersicht.html  -> aktive Saison im Browser\nseason-*.html        -> archivierte Saisons\nabschluss-*.html     -> teilbare Saisonabschluss-Seiten\n\nZusätzlich enthalten: Hall of Fame, Head-to-Head, Form-Ranking, Rekordbuch, Spielerprofile, Award-Historie und System-Gesundheit.\n"), 0o644)
+	_ = os.WriteFile(readme, []byte("AUTODARTS LIGA – SAISONÜBERSICHT OHNE ADD-ON\n\nLiga-Übersicht.xlsx  -> aktive Saison in OneDrive / Excel Online / Excel\nLiga-Übersicht.html  -> aktive Saison im Browser\nseason-*.html        -> archivierte Saisons\nabschluss-*.html     -> teilbare Saisonabschluss-Seiten\n\nZusätzlich enthalten: Dashboard mit Spielplan, Statistiken, Hall of Fame, Head-to-Head, Rekordbuch, Spielerprofilen und Finalrunde.\n"), 0o644)
 	if currentHTML != "" {
 		if err := s.publishOverviewHTML(filepath.Join(dir, "Liga-Übersicht.html")); err != nil {
 			log.Printf("GitHub-Pages-Veröffentlichung: %v", err)
@@ -1028,6 +1028,7 @@ func writeHTMLOverview(path string, ov LeagueOverview, seasons []SeasonInfo, cur
 	b.WriteString(`:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#07111f;color:#eef6ff;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}.wrap{max-width:1180px;margin:auto;padding:22px}.head{display:flex;justify-content:space-between;gap:18px;align-items:end;flex-wrap:wrap}.eyebrow{font-size:12px;letter-spacing:.16em;color:#77b9ff;font-weight:800}.head h1{margin:5px 0 4px;font-size:32px}.muted{color:#9cb0c5;font-size:13px}.cards{display:grid;grid-template-columns:repeat(4,minmax(140px,1fr));gap:12px;margin:22px 0}.card,.panel{background:#111d2b;border:1px solid #24384c;border-radius:14px}.card{padding:16px}.card strong{display:block;font-size:26px}.card span{font-size:12px;color:#9cb0c5}.panel{padding:18px;margin:14px 0;overflow:auto}h2{font-size:18px;margin:0 0 14px}table{width:100%;border-collapse:collapse;min-width:760px}th,td{border-bottom:1px solid #24384c;padding:10px 9px;text-align:center;font-variant-numeric:tabular-nums}th{font-size:11px;color:#8ec4ff;text-transform:uppercase;letter-spacing:.08em}td:first-child,th:first-child{text-align:left}.pos{color:#59e391}.neg{color:#ff7b83}.days{display:grid;grid-template-columns:repeat(10,minmax(70px,1fr));gap:8px}.day{padding:10px;border:1px solid #24384c;border-radius:10px;text-align:center}.day.has{border-color:#2b8d68;background:#102b27}.day b{display:block;font-size:20px}.matches{display:grid;gap:8px}.matchday-heading{margin-top:12px;padding:10px 12px;border:1px solid #2d5d86;border-radius:10px;background:#0d2338;display:flex;align-items:center;justify-content:space-between;gap:12px;color:#9bcfff}.matchday-heading:first-child{margin-top:0}.matchday-heading div{display:flex;align-items:baseline;gap:8px}.matchday-heading strong{font-size:20px;color:#eef6ff}.matchday-heading>span{font-size:12px;color:#9cb0c5}.matchday-kicker{font-size:10px;letter-spacing:.14em;font-weight:900;color:#5eafff}.match{display:grid;grid-template-columns:75px 150px 1fr 70px 1fr 95px;gap:8px;align-items:center;padding:10px 8px;border-bottom:1px solid #24384c}.score{font-weight:900;font-size:18px;text-align:center}.tag{font-size:11px;color:#8ec4ff}.winner{color:#59e391;font-weight:800}.match-detail{border:1px solid #24384c;border-radius:12px;overflow:hidden;background:#0d1826}.match-detail+ .match-detail{margin-top:8px}.match-detail summary{list-style:none;cursor:pointer}.match-detail summary::-webkit-details-marker{display:none}.match-detail[open]{border-color:#356b98}.match-detail[open] summary{background:#12263a}.stats-toggle{color:#8ec4ff;font-size:12px;font-weight:800;text-align:right}.detail{padding:12px;border-top:1px solid #24384c}.detail-head{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}.detail-player{padding:10px;border:1px solid #24384c;border-radius:10px}.detail-player b{display:block;font-size:15px}.detail-player span{font-size:11px;color:#9cb0c5}.stat-table{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:#24384c;border:1px solid #24384c;border-radius:10px;overflow:hidden}.stat-row{display:contents}.stat-cell{background:#101b28;padding:9px 8px;text-align:center;font-variant-numeric:tabular-nums}.stat-label{color:#8ec4ff;font-size:11px;font-weight:800}.stat-value{font-weight:800}.autodarts-link{display:inline-block;margin-top:10px;color:#8ec4ff;text-decoration:none;font-size:12px;font-weight:800}.highlights{margin-top:12px;padding:12px;border:1px solid #31506b;border-radius:10px;background:#0b1623}.highlights-title{font-size:12px;font-weight:900;letter-spacing:.08em;color:#ffd166;text-transform:uppercase;margin-bottom:9px}.highlight-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.highlight-player{padding:9px;border:1px solid #24384c;border-radius:9px;background:#101b28}.highlight-player-name{font-size:12px;font-weight:800;margin-bottom:7px}.highlight-line{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:5px 0}.highlight-kind{font-size:10px;color:#9cb0c5;min-width:84px}.highlight-pill{display:inline-block;border:1px solid #375775;background:#15273a;border-radius:999px;padding:4px 7px;font-size:11px;font-weight:800}.highlight-pill.score{border-color:#7d5b1f;background:#2a2210;color:#ffd166}.highlight-pill.finish{border-color:#7d355d;background:#2b1424;color:#ff9bd0}.highlight-pill.short{border-color:#2b7758;background:#102a21;color:#6de5ac}.season-note{margin:-6px 0 12px}.season-table{min-width:900px}.season-table td{vertical-align:top}.season-table td:first-child{white-space:nowrap}.season-count{font-size:11px;font-weight:900;color:#8ec4ff;margin-bottom:6px}.season-pills{display:flex;flex-wrap:wrap;justify-content:center;gap:5px}.season-pill{display:inline-block;border:1px solid #375775;background:#15273a;border-radius:999px;padding:4px 7px;font-size:10px;font-weight:800;white-space:nowrap}.season-pill.score{border-color:#7d5b1f;background:#2a2210;color:#ffd166}.season-pill.finish{border-color:#7d355d;background:#2b1424;color:#ff9bd0}.season-pill.short{border-color:#2b7758;background:#102a21;color:#6de5ac}.season-none{color:#60778d}.season-nav{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:12px}.season-nav label{font-size:11px;color:#9cb0c5;font-weight:800}.season-nav select{background:#111d2b;color:#eef6ff;border:1px solid #356b98;border-radius:9px;padding:8px 10px;font-weight:800}.season-status{font-size:11px;color:#59e391;font-weight:800}.season-status.archived{color:#ffd166}@media(max-width:760px){.cards{grid-template-columns:repeat(2,1fr)}.days{grid-template-columns:repeat(5,1fr)}.match{grid-template-columns:55px 1fr 54px 1fr}.match .date,.match .winnerLabel{display:none}.wrap{padding:14px}.stats-toggle{display:none}.detail{padding:10px}.stat-table{font-size:12px}.stat-cell{padding:8px 4px}.highlight-grid{grid-template-columns:1fr}.highlight-kind{min-width:76px}}`)
 	b.WriteString(`</style>`)
 	writeAnalyticsCSS(&b)
+	b.WriteString(`<style id="liga-dashboard-css">.dashboard-nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:18px 0 10px;position:sticky;top:8px;z-index:20;background:#07111fee;padding:8px;border:1px solid #24384c;border-radius:14px;backdrop-filter:blur(8px)}.dashboard-tab{appearance:none;border:1px solid #304a63;background:#0d1826;color:#b9cee1;border-radius:10px;padding:11px 8px;font:inherit;font-size:12px;font-weight:850;cursor:pointer}.dashboard-tab:hover{border-color:#4d7ba3}.dashboard-tab.active{background:#17334d;border-color:#65aff0;color:#fff}.dashboard-tab-panel{display:none}.dashboard-tab-panel.active{display:block}.dashboard-intro{color:#9cb0c5;font-size:12px;margin:2px 0 12px}.overview-core{display:grid;gap:0}.cards.compact{grid-template-columns:repeat(3,minmax(120px,1fr));margin:14px 0}.cards.compact .card{padding:12px 14px}.cards.compact .card strong{font-size:22px}.dashboard-tab-panel>.panel:first-child{margin-top:10px}.dashboard-section-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:18px 0 8px}.dashboard-section-title h2{margin:0}.dashboard-section-title span{font-size:11px;color:#8ec4ff}.history-preview{margin-top:8px}.tab-results-note{margin:8px 0 0;color:#9cb0c5;font-size:12px}@media(max-width:760px){.dashboard-nav{grid-template-columns:repeat(2,1fr);position:static}.cards.compact{grid-template-columns:repeat(3,1fr)}.cards.compact .card strong{font-size:18px}.dashboard-tab{min-height:44px}}@media(max-width:430px){.cards.compact{grid-template-columns:1fr 1fr}.cards.compact .card:last-child{grid-column:1/-1}}</style>`)
 	b.WriteString(`</head><body><div class="wrap"><div class="head"><div><div class="eyebrow">AUTODARTS LIGA</div><h1>` + htmlE(ov.LeagueName) + `</h1><div class="muted">` + htmlE(ov.SeasonName) + ` · automatisch aus dem zentralen Liga-OneDrive erstellt</div><div class="season-nav"><label for="seasonSelect">Saison</label><select id="seasonSelect" onchange="if(this.value)location.href=this.value">`)
 	for _, season := range seasons {
 		href := "season-" + safeOverviewPart(season.ID) + ".html"
@@ -1047,27 +1048,12 @@ func writeHTMLOverview(path string, ov LeagueOverview, seasons []SeasonInfo, cur
 			played++
 		}
 	}
-	latest := "–"
-	if len(ov.Matches) > 0 {
-		latest = formatDateDE(ov.Matches[len(ov.Matches)-1].Date)
-	}
-	fmt.Fprintf(&b, `<div class="cards"><div class="card"><strong>%d</strong><span>Matches</span></div><div class="card"><strong>%d/10</strong><span>Spieltage</span></div><div class="card"><strong>%d</strong><span>Spieler</span></div><div class="card"><strong style="font-size:18px">%s</strong><span>Letztes Match</span></div></div>`, len(ov.Matches), played, len(ov.Players), htmlE(latest))
+	fmt.Fprintf(&b, `<div class="cards compact"><div class="card"><strong>%d/30</strong><span>Ligaspiele</span></div><div class="card"><strong>%d/10</strong><span>Spieltage</span></div><div class="card"><strong>%d</strong><span>Spieler</span></div></div>`, len(ov.Matches), played, len(ov.Players))
 	if finalState != nil && finalState.Status == "completed" {
 		fmt.Fprintf(&b, `<div class="panel"><b>🏆 Saison abgeschlossen · %s</b><br><a class="share-link" href="abschluss-%s.html">Saisonabschluss-Seite öffnen / teilen ↗</a></div>`, htmlE(finalState.Champion), htmlE(safeOverviewPart(ov.SeasonID)))
 	}
+	// Dashboard-Kern: nur das aktuell Relevante bleibt dauerhaft sichtbar.
 	writeCurrentMatchdayHTML(&b, ov, extra.Schedule)
-	formHistory := extra.History
-	formHistory.Form = buildFormRanking(ov)
-	writeFormHTML(&b, formHistory)
-	b.WriteString(`<div class="panel"><h2>Spieltage</h2><div class="days">`)
-	for i, c := range ov.DayCounts {
-		cl := "day"
-		if c > 0 {
-			cl += " has"
-		}
-		fmt.Fprintf(&b, `<div class="%s"><span class="tag">ST %d</span><b>%d</b><span class="muted">%s</span></div>`, cl, i+1, c, map[bool]string{true: "Match", false: "Matches"}[c == 1])
-	}
-	b.WriteString(`</div></div>`)
 	b.WriteString(`<div class="panel"><h2>Ligatabelle</h2><table><thead><tr><th>Spieler</th><th>Sp.</th><th>S</th><th>N</th><th>Legs</th><th>+/-</th><th>Ø AVG</th><th>CO %</th><th>95+</th><th>114+</th><th>133+</th><th>171</th><th>174</th><th>177</th><th>180</th><th>Max. Finish</th></tr></thead><tbody>`)
 	for _, p := range ov.Players {
 		cls := ""
@@ -1088,16 +1074,17 @@ func writeHTMLOverview(path string, ov LeagueOverview, seasons []SeasonInfo, cur
 		}())
 	}
 	b.WriteString(`</tbody></table><div class="muted" style="margin-top:9px">Scoring exklusiv: 95+ = 95–113 · 114+ = 114–132 · 133+ = 133–170 · 171 / 174 / 177 / 180 jeweils exakt. „≥ Zahl*“ = bisher nachweisbarer Mindestwert; mindestens ein Match hat unvollständige Scoring-Daten. Dieser Wert ist KEIN vollständiger Saisonwert. Betroffene Spiele im GitHub-Actions-Protokoll ermitteln und erneut mit vollständiger Wurfhistorie auswerten.</div></div>`)
-	writeSeasonHighlightsHTML(&b, ov)
 	writeSeasonAwardsHTML(&b, finalState)
-	writeFinalSectionHTML(&b, finalState)
-	writeHallOfFameHTML(&b, extra.History)
-	writeHistoricalSeasonsHTML(&b, extra.History.Historical)
+	b.WriteString(`<div class="dashboard-nav" role="tablist" aria-label="Liga-Bereiche"><button class="dashboard-tab" type="button" role="tab" aria-selected="false" data-tab="spielplan">Spielplan</button><button class="dashboard-tab" type="button" role="tab" aria-selected="false" data-tab="statistiken">Statistiken</button><button class="dashboard-tab" type="button" role="tab" aria-selected="false" data-tab="historie">Historie</button><button class="dashboard-tab" type="button" role="tab" aria-selected="false" data-tab="finale">Finalrunde</button></div>`)
+	b.WriteString(`<div id="tab-spielplan" class="dashboard-tab-panel" role="tabpanel"><div class="dashboard-intro">Kompletter Saisonspielplan. Standardmäßig ist der nächste offene Spieltag aufgeklappt.</div><!-- LIGA_SPIELPLAN_SLOT --></div>`)
+	b.WriteString(`<div id="tab-statistiken" class="dashboard-tab-panel" role="tabpanel"><div class="dashboard-intro">Form, Spieler, direkte Duelle, Rekorde und Matchdetails – nur sichtbar, wenn du sie brauchst.</div>`)
+	formHistory := extra.History
+	formHistory.Form = buildFormRanking(ov)
+	writeFormHTML(&b, formHistory)
+	writeSeasonHighlightsHTML(&b, ov)
 	writeHeadToHeadHTML(&b, extra.History, seasons, currentSeasonID)
 	writeRecordsHTML(&b, extra.History)
 	writeProfilesHTML(&b, extra.History, ov)
-	writeAwardHistoryHTML(&b, extra.History)
-	writeHealthHTML(&b, extra.Health)
 	b.WriteString(`<div class="panel"><h2>Ergebnisse</h2><div class="matches">`)
 	matches := append([]MatchOverview(nil), ov.Matches...)
 	sort.SliceStable(matches, func(i, j int) bool {
@@ -1204,7 +1191,16 @@ func writeHTMLOverview(path string, ov LeagueOverview, seasons []SeasonInfo, cur
 		}
 		b.WriteString(`<a class="autodarts-link" target="_blank" rel="noopener" href="` + htmlE(matchURL) + `">Match bei Autodarts öffnen ↗</a></div></details>`)
 	}
-	b.WriteString(`</div></div><div class="muted" style="padding:10px 0 24px">Für eine Matchstatistik einfach ein Ergebnis antippen. Die Werte stammen aus den zentral gespeicherten Liga-Matches.</div></div></body></html>`)
+	b.WriteString(`</div></div><div class="tab-results-note">Für eine Matchstatistik einfach ein Ergebnis antippen. Die Werte stammen aus den zentral gespeicherten Liga-Matches.</div></div>`)
+	b.WriteString(`<div id="tab-historie" class="dashboard-tab-panel" role="tabpanel"><div class="dashboard-intro">Saisonübergreifende Erfolge und Archivdaten.</div>`)
+	writeHallOfFameHTML(&b, extra.History)
+	writeHistoricalSeasonsHTML(&b, extra.History.Historical)
+	writeAwardHistoryHTML(&b, extra.History)
+	b.WriteString(`</div>`)
+	b.WriteString(`<div id="tab-finale" class="dashboard-tab-panel" role="tabpanel"><div class="dashboard-intro">Finalspieltag und separate Finalstatistik. Während der Liga bleibt dieser Bereich kompakt im Hintergrund.</div>`)
+	writeFinalSectionHTML(&b, finalState)
+	b.WriteString(`</div>`)
+	b.WriteString(`<script id="liga-dashboard-js">(function(){const buttons=[...document.querySelectorAll('.dashboard-tab')],panels=[...document.querySelectorAll('.dashboard-tab-panel')];let active='';function openTab(name,focus){active=name||'';buttons.forEach(x=>{const on=!!active&&x.dataset.tab===active;x.classList.toggle('active',on);x.setAttribute('aria-selected',on?'true':'false');});panels.forEach(x=>x.classList.toggle('active',!!active&&x.id==='tab-'+active));if(focus&&active){const p=document.getElementById('tab-'+active);if(p)p.scrollIntoView({behavior:'smooth',block:'start'});}try{history.replaceState(null,'',active?'#'+active:location.pathname+location.search)}catch(e){}}buttons.forEach(x=>x.addEventListener('click',()=>openTab(active===x.dataset.tab?'':x.dataset.tab,true)));const hash=location.hash.replace('#','');if(['spielplan','statistiken','historie','finale'].includes(hash))openTab(hash,false);})();</script></div></body></html>`)
 	return writeAtomic(path, []byte(b.String()), 0o644)
 }
 
